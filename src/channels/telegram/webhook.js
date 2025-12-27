@@ -31,13 +31,26 @@ class TelegramWebhookHandler {
     }
 
     _setupRoutes() {
-        // Telegram webhook endpoint
-        this.app.post('/webhook/telegram', this._handleWebhook.bind(this));
+        // Telegram webhook endpoint (with optional secret path segment)
+        const webhookPath = this.getWebhookPath();
+        this.app.post(webhookPath, this._handleWebhook.bind(this));
 
         // Health check endpoint
         this.app.get('/health', (req, res) => {
             res.json({ status: 'ok', service: 'telegram-webhook' });
         });
+    }
+
+    /**
+     * Get the webhook path (with optional secret segment for defense-in-depth)
+     * @returns {string} The webhook path
+     */
+    getWebhookPath() {
+        const basePath = '/webhook/telegram';
+        if (this.config.webhookPathSecret) {
+            return `${basePath}/${this.config.webhookPathSecret}`;
+        }
+        return basePath;
     }
 
     /**

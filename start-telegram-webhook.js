@@ -28,6 +28,7 @@ const config = {
     port: process.env.TELEGRAM_WEBHOOK_PORT || 3001,
     webhookUrl: process.env.TELEGRAM_WEBHOOK_URL,
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
+    webhookPathSecret: process.env.TELEGRAM_WEBHOOK_PATH_SECRET,
     dropPendingUpdates: process.env.TELEGRAM_DROP_PENDING_UPDATES === 'true'
 };
 
@@ -58,12 +59,13 @@ async function start() {
     logger.info(`- Group ID: ${config.groupId || 'Not set'}`);
     logger.info(`- Whitelist: ${config.whitelist.length > 0 ? config.whitelist.join(', ') : 'None (using configured IDs)'}`);
     logger.info(`- Webhook Secret: ${config.webhookSecret ? 'Configured' : 'NOT SET (insecure)'}`);
+    logger.info(`- Webhook Path Secret: ${config.webhookPathSecret ? 'Configured' : 'Not set (using default path)'}`);
     logger.info(`- Drop Pending Updates: ${config.dropPendingUpdates ? 'Yes' : 'No'}`);
 
     // Set webhook if URL is provided
     if (config.webhookUrl) {
         try {
-            const webhookEndpoint = `${config.webhookUrl}/webhook/telegram`;
+            const webhookEndpoint = `${config.webhookUrl}${webhookHandler.getWebhookPath()}`;
             logger.info(`Checking webhook: ${webhookEndpoint}`);
             const result = await webhookHandler.setWebhook(webhookEndpoint);
             if (result.skipped) {
