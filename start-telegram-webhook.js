@@ -64,8 +64,13 @@ async function start() {
     if (config.webhookUrl) {
         try {
             const webhookEndpoint = `${config.webhookUrl}/webhook/telegram`;
-            logger.info(`Setting webhook to: ${webhookEndpoint}`);
-            await webhookHandler.setWebhook(webhookEndpoint);
+            logger.info(`Checking webhook: ${webhookEndpoint}`);
+            const result = await webhookHandler.setWebhook(webhookEndpoint);
+            if (result.skipped) {
+                logger.info('Webhook already configured, no update needed');
+            } else {
+                logger.info('Webhook registered successfully');
+            }
         } catch (error) {
             logger.error('Failed to set webhook:', error.message);
             logger.info('You can manually set the webhook using:');

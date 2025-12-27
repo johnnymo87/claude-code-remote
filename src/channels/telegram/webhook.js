@@ -324,8 +324,32 @@ class TelegramWebhookHandler {
         }
     }
 
-    async setWebhook(webhookUrl) {
+    async getWebhookInfo() {
         try {
+            const response = await axios.get(
+                `${this.apiBaseUrl}/bot${this.config.botToken}/getWebhookInfo`,
+                this._getNetworkOptions()
+            );
+            return response.data.result;
+        } catch (error) {
+            this.logger.error('Failed to get webhook info:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async setWebhook(webhookUrl, options = {}) {
+        const { force = false } = options;
+
+        try {
+            // Check current webhook state to avoid unnecessary updates
+            if (!force) {
+                const currentInfo = await this.getWebhookInfo();
+                if (currentInfo.url === webhookUrl) {
+                    this.logger.info('Webhook already configured, skipping setWebhook');
+                    return { ok: true, skipped: true, description: 'Webhook already configured' };
+                }
+            }
+
             const payload = {
                 url: webhookUrl,
                 allowed_updates: ['message', 'callback_query']
