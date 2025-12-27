@@ -337,6 +337,11 @@ class TelegramWebhookHandler {
                 payload.secret_token = this.config.webhookSecret;
             }
 
+            // Drop pending updates if configured (useful for dev sessions)
+            if (this.config.dropPendingUpdates) {
+                payload.drop_pending_updates = true;
+            }
+
             const response = await axios.post(
                 `${this.apiBaseUrl}/bot${this.config.botToken}/setWebhook`,
                 payload,

@@ -27,7 +27,8 @@ const config = {
     whitelist: process.env.TELEGRAM_WHITELIST ? process.env.TELEGRAM_WHITELIST.split(',').map(id => id.trim()) : [],
     port: process.env.TELEGRAM_WEBHOOK_PORT || 3001,
     webhookUrl: process.env.TELEGRAM_WEBHOOK_URL,
-    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET
+    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
+    dropPendingUpdates: process.env.TELEGRAM_DROP_PENDING_UPDATES === 'true'
 };
 
 // Validate configuration
@@ -57,6 +58,7 @@ async function start() {
     logger.info(`- Group ID: ${config.groupId || 'Not set'}`);
     logger.info(`- Whitelist: ${config.whitelist.length > 0 ? config.whitelist.join(', ') : 'None (using configured IDs)'}`);
     logger.info(`- Webhook Secret: ${config.webhookSecret ? 'Configured' : 'NOT SET (insecure)'}`);
+    logger.info(`- Drop Pending Updates: ${config.dropPendingUpdates ? 'Yes' : 'No'}`);
 
     // Set webhook if URL is provided
     if (config.webhookUrl) {
