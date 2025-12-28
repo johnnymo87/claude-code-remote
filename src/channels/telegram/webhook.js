@@ -230,7 +230,7 @@ class TelegramWebhookHandler {
                 this.logger.info(`Reply-to routing: ${chatId}:${repliedTo.message_id} → ${token.slice(0, 8)}...`);
                 // Delete mapping after lookup (single-use)
                 this.messageTokenStore.delete(chatId, repliedTo.message_id);
-                await this._processCommand(chatId, userId, token, messageText);
+                await this._processCommand(chatId, token, messageText);
                 return;
             }
             // Token not found or expired - fall through to normal parsing
