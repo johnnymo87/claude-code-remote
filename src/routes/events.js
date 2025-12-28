@@ -79,7 +79,8 @@ function createEventRoutes(options) {
      */
     router.post('/stop', async (req, res) => {
         try {
-            const { session_id, event, summary, label } = req.body;
+            // Note: on-stop.sh sends 'message', we accept both 'message' and 'summary'
+            const { session_id, event, summary, message, label } = req.body;
 
             if (!session_id) {
                 return res.status(400).json({ error: 'session_id is required' });
@@ -107,7 +108,7 @@ function createEventRoutes(options) {
                     const result = await onStop({
                         session,
                         event: event || 'Stop',
-                        summary: summary || 'Task completed',
+                        summary: message || summary || 'Task completed',
                         label: label || session.label,
                     });
                     res.json({ ok: true, notified: true, ...result });

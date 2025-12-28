@@ -95,12 +95,13 @@ class TelegramWebhookHandler {
         const cwdShort = session.cwd ? session.cwd.split('/').slice(-2).join('/') : 'unknown';
 
         const message = [
-            `${emoji} *${event}*: ${this._escapeMarkdown(summary)}`,
+            `${emoji} *${event}*: ${this._escapeMarkdown(displayLabel)}`,
             '',
-            `📁 *Session:* ${this._escapeMarkdown(displayLabel)}`,
-            `📂 *CWD:* \`${cwdShort}\``,
+            this._escapeMarkdown(summary),
             '',
-            `💬 Reply with: \`/cmd ${token} <command>\``,
+            `📂 \`${cwdShort}\``,
+            '',
+            `↩️ _Swipe-reply to respond_`,
         ].join('\n');
 
         // Create inline keyboard with common actions
@@ -135,11 +136,12 @@ class TelegramWebhookHandler {
     }
 
     /**
-     * Escape special characters for Telegram Markdown
+     * Escape special characters for Telegram basic Markdown
+     * Only escapes: _ * ` [
      */
     _escapeMarkdown(text) {
         if (!text) return '';
-        return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+        return text.replace(/[_*`[]/g, '\\$&');
     }
 
     /**
