@@ -62,6 +62,8 @@ class TmuxInjectorAdapter {
     }
 
     async inject(command) {
+        const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
         try {
             // Check session exists
             const hasSession = await spawnAsync('tmux', ['has-session', '-t', this.sessionName]);
@@ -71,9 +73,11 @@ class TmuxInjectorAdapter {
 
             // Clear current input (Ctrl-U)
             await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, 'C-u']);
+            await delay(50);
 
             // Send the command (tmux send-keys handles escaping when passed as argument)
             await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, command]);
+            await delay(50);
 
             // Send Enter (C-m)
             await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, 'C-m']);
