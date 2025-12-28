@@ -11,6 +11,7 @@ const fs = require('fs');
 const Logger = require('../../core/logger');
 const ControllerInjector = require('../../utils/controller-injector');
 const SessionRegistry = require('../../registry/session-registry');
+const MessageTokenStore = require('../../storage/message-token-store');
 const { createEventRoutes } = require('../../routes/events');
 const { createInjector } = require('../../relay/injector-registry');
 
@@ -27,6 +28,13 @@ class TelegramWebhookHandler {
         // Initialize session registry for Claude hook integration
         this.registry = new SessionRegistry({
             dataDir: path.join(__dirname, '../../data'),
+            logger: this.logger,
+        });
+
+        // Initialize message token store for reply-to routing
+        this.messageTokenStore = new MessageTokenStore({
+            dbPath: path.join(__dirname, '../../data/message-tokens.db'),
+            ttlMs: 24 * 60 * 60 * 1000, // 24 hours
             logger: this.logger,
         });
 
@@ -110,10 +118,16 @@ class TelegramWebhookHandler {
             ],
         };
 
-        await this._sendMessage(chatId, message, {
+        const response = await this._sendMessage(chatId, message, {
             parse_mode: 'Markdown',
             reply_markup: keyboard,
         });
+
+        // Store message_id → token mapping for reply-to routing
+        if (response?.ok && response.result?.message_id > 0) {
+            this.messageTokenStore.store(chatId, response.result.message_id, token);
+            this.logger.debug(`Stored reply-to mapping: ${chatId}:${response.result.message_id} → ${token.slice(0, 8)}...`);
+        }
 
         this.logger.info(`Stop notification sent for session: ${session.session_id} (${displayLabel})`);
 
@@ -185,7 +199,7 @@ class TelegramWebhookHandler {
         const chatId = message.chat.id;
         const userId = message.from.id;
         const messageText = message.text?.trim();
-        
+
         if (!messageText) return;
 
         // Check if user is authorized
@@ -207,6 +221,23 @@ class TelegramWebhookHandler {
             return;
         }
 
+        // Check for reply-to routing first
+        // If user replies to a bot notification, route using the stored token
+        const repliedTo = message.reply_to_message;
+        if (repliedTo?.message_id && repliedTo.from?.is_bot) {
+            const token = this.messageTokenStore.lookup(chatId, repliedTo.message_id);
+            if (token) {
+                this.logger.info(`Reply-to routing: ${chatId}:${repliedTo.message_id} → ${token.slice(0, 8)}...`);
+                // Delete mapping after lookup (single-use)
+                this.messageTokenStore.delete(chatId, repliedTo.message_id);
+                await this._processCommand(chatId, userId, token, messageText);
+                return;
+            }
+            // Token not found or expired - fall through to normal parsing
+            // This handles the case where user replies to an old message
+            this.logger.debug(`No token found for reply to ${chatId}:${repliedTo.message_id}, trying /cmd parsing`);
+        }
+
         // Parse command
         // Support both old 8-char tokens (ABC12345) and new base64url tokens (79y7B05zwzwGcyhotcqREg)
         const commandMatch = messageText.match(/^\/cmd\s+([A-Za-z0-9_-]{8,30})\s+(.+)$/i);
@@ -216,9 +247,17 @@ class TelegramWebhookHandler {
             if (directMatch) {
                 await this._processCommand(chatId, directMatch[1], directMatch[2]);
             } else {
-                await this._sendMessage(chatId,
-                    '❌ Invalid format. Use:\n`/cmd <TOKEN> <command>`\n\nExample:\n`/cmd ABC12345 analyze this code`',
-                    { parse_mode: 'Markdown' });
+                // Only show error if this wasn't a reply to a bot message
+                // (replies to old messages with expired tokens should get a friendlier message)
+                if (repliedTo?.from?.is_bot) {
+                    await this._sendMessage(chatId,
+                        '⏰ That notification has expired. Please use the `/cmd TOKEN` format from a newer notification, or wait for Claude to send a new one.',
+                        { parse_mode: 'Markdown' });
+                } else {
+                    await this._sendMessage(chatId,
+                        '❌ Invalid format. Use:\n`/cmd <TOKEN> <command>`\n\nOr reply directly to a notification message.',
+                        { parse_mode: 'Markdown' });
+                }
             }
             return;
         }
@@ -507,7 +546,7 @@ class TelegramWebhookHandler {
 
     async _sendMessage(chatId, text, options = {}) {
         try {
-            await axios.post(
+            const response = await axios.post(
                 `${this.apiBaseUrl}/bot${this.config.botToken}/sendMessage`,
                 {
                     chat_id: chatId,
@@ -516,8 +555,10 @@ class TelegramWebhookHandler {
                 },
                 this._getNetworkOptions()
             );
+            return response.data;
         } catch (error) {
             this.logger.error('Failed to send message:', error.response?.data || error.message);
+            return null;
         }
     }
 

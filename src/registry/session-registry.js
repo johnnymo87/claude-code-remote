@@ -112,17 +112,17 @@ class SessionRegistry {
                 nvim_socket: session.nvim_socket,
                 buffer: session.buffer ?? existing?.transport?.buffer,
                 instance_name: session.instance_name ?? existing?.transport?.instance_name,
-                // Store tmux as fallback if available
-                tmux_session: session.tmux_session ?? existing?.transport?.tmux_session,
+                // Store tmux as fallback if available (prefer tmux_pane over tmux_session for accurate targeting)
+                tmux_session: session.tmux_pane || session.tmux_session || existing?.transport?.tmux_session,
             };
         }
 
         // If tmux_session is provided, it's a tmux session
-        if (session.tmux_session) {
+        // Prefer tmux_pane (includes window.pane) over tmux_session for accurate targeting
+        if (session.tmux_session || session.tmux_pane) {
             return {
                 kind: 'tmux',
-                session_name: session.tmux_session,
-                pane: session.tmux_pane ?? existing?.transport?.pane,
+                session_name: session.tmux_pane || session.tmux_session,
             };
         }
 
