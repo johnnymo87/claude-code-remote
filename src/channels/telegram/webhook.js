@@ -10,6 +10,9 @@ const path = require('path');
 const fs = require('fs');
 const Logger = require('../../core/logger');
 const ControllerInjector = require('../../utils/controller-injector');
+const SessionRegistry = require('../../registry/session-registry');
+const { createEventRoutes } = require('../../routes/events');
+const { createInjector } = require('../../relay/injector-registry');
 
 class TelegramWebhookHandler {
     constructor(config = {}) {
@@ -20,7 +23,13 @@ class TelegramWebhookHandler {
         this.app = express();
         this.apiBaseUrl = 'https://api.telegram.org';
         this.botUsername = null; // Cache for bot username
-        
+
+        // Initialize session registry for Claude hook integration
+        this.registry = new SessionRegistry({
+            dataDir: path.join(__dirname, '../../data'),
+            logger: this.logger,
+        });
+
         this._setupMiddleware();
         this._setupRoutes();
     }
@@ -39,6 +48,84 @@ class TelegramWebhookHandler {
         this.app.get('/health', (req, res) => {
             res.json({ status: 'ok', service: 'telegram-webhook' });
         });
+
+        // Mount event routes for Claude hook integration
+        const eventRoutes = createEventRoutes({
+            registry: this.registry,
+            logger: this.logger,
+            onStop: this._handleStopEvent.bind(this),
+        });
+        this.app.use(eventRoutes);
+    }
+
+    /**
+     * Handle Stop event from Claude hooks
+     * Sends Telegram notification with action buttons
+     *
+     * @param {object} params
+     * @param {object} params.session - Session record
+     * @param {string} params.event - "Stop" or "SubagentStop"
+     * @param {string} params.summary - Task summary
+     * @param {string} params.label - Human-friendly label
+     * @returns {Promise<object>} Result with token
+     */
+    async _handleStopEvent({ session, event, summary, label }) {
+        const chatId = this.config.chatId || this.config.groupId;
+
+        if (!chatId) {
+            throw new Error('No chat_id configured');
+        }
+
+        // Mint a token for this notification
+        const token = this.registry.mintToken(session.session_id, chatId, {
+            context: { event, summary },
+        });
+
+        // Format the notification message
+        const emoji = event === 'SubagentStop' ? '🔧' : '🤖';
+        const displayLabel = label || session.label || session.session_id.slice(0, 8);
+        const cwdShort = session.cwd ? session.cwd.split('/').slice(-2).join('/') : 'unknown';
+
+        const message = [
+            `${emoji} *${event}*: ${this._escapeMarkdown(summary)}`,
+            '',
+            `📁 *Session:* ${this._escapeMarkdown(displayLabel)}`,
+            `📂 *CWD:* \`${cwdShort}\``,
+            '',
+            `💬 Reply with: \`/cmd ${token} <command>\``,
+        ].join('\n');
+
+        // Create inline keyboard with common actions
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '▶️ Continue', callback_data: `cmd:${token}:continue` },
+                    { text: '✅ Yes', callback_data: `cmd:${token}:y` },
+                    { text: '❌ No', callback_data: `cmd:${token}:n` },
+                ],
+                [
+                    { text: '🛑 Exit', callback_data: `cmd:${token}:exit` },
+                    { text: '📝 Custom...', callback_data: `personal:${token}` },
+                ],
+            ],
+        };
+
+        await this._sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: keyboard,
+        });
+
+        this.logger.info(`Stop notification sent for session: ${session.session_id} (${displayLabel})`);
+
+        return { token };
+    }
+
+    /**
+     * Escape special characters for Telegram Markdown
+     */
+    _escapeMarkdown(text) {
+        if (!text) return '';
+        return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
     }
 
     /**
@@ -121,61 +208,62 @@ class TelegramWebhookHandler {
         }
 
         // Parse command
-        const commandMatch = messageText.match(/^\/cmd\s+([A-Z0-9]{8})\s+(.+)$/i);
+        // Support both old 8-char tokens (ABC12345) and new base64url tokens (79y7B05zwzwGcyhotcqREg)
+        const commandMatch = messageText.match(/^\/cmd\s+([A-Za-z0-9_-]{8,30})\s+(.+)$/i);
         if (!commandMatch) {
             // Check if it's a direct command without /cmd prefix
-            const directMatch = messageText.match(/^([A-Z0-9]{8})\s+(.+)$/);
+            const directMatch = messageText.match(/^([A-Za-z0-9_-]{8,30})\s+(.+)$/);
             if (directMatch) {
                 await this._processCommand(chatId, directMatch[1], directMatch[2]);
             } else {
-                await this._sendMessage(chatId, 
+                await this._sendMessage(chatId,
                     '❌ Invalid format. Use:\n`/cmd <TOKEN> <command>`\n\nExample:\n`/cmd ABC12345 analyze this code`',
                     { parse_mode: 'Markdown' });
             }
             return;
         }
 
-        const token = commandMatch[1].toUpperCase();
+        const token = commandMatch[1]; // Don't uppercase - base64url is case-sensitive
         const command = commandMatch[2];
 
         await this._processCommand(chatId, token, command);
     }
 
     async _processCommand(chatId, token, command) {
-        // Find session by token
-        const session = await this._findSessionByToken(token);
-        if (!session) {
-            await this._sendMessage(chatId, 
-                '❌ Invalid or expired token. Please wait for a new task notification.',
+        // Validate token using registry
+        const validation = this.registry.validateToken(token, chatId.toString());
+        if (!validation.valid) {
+            await this._sendMessage(chatId,
+                `❌ ${validation.error}. Please wait for a new task notification.`,
                 { parse_mode: 'Markdown' });
             return;
         }
 
-        // Check if session is expired
-        if (session.expiresAt < Math.floor(Date.now() / 1000)) {
-            await this._sendMessage(chatId, 
-                '❌ Token has expired. Please wait for a new task notification.',
+        // Get session for transport info
+        const session = this.registry.getSession(validation.session_id);
+        if (!session) {
+            await this._sendMessage(chatId,
+                '❌ Session not found. Please wait for a new task notification.',
                 { parse_mode: 'Markdown' });
-            await this._removeSession(session.id);
             return;
         }
 
         try {
-            // Inject command into tmux session
-            const tmuxSession = session.tmuxSession || 'default';
-            await this.injector.injectCommand(command, tmuxSession);
-            
+            // Inject command using session's transport
+            await this._injectToSession(session, command);
+
             // Send confirmation
-            await this._sendMessage(chatId, 
-                `✅ *Command sent successfully*\n\n📝 *Command:* ${command}\n🖥️ *Session:* ${tmuxSession}\n\nClaude is now processing your request...`,
+            const transportDesc = session.transport?.kind === 'nvim' ? 'nvim' : 'tmux';
+            await this._sendMessage(chatId,
+                `✅ *Command sent successfully*\n\n📝 *Command:* ${command}\n🖥️ *Transport:* ${transportDesc}\n📋 *Session:* ${session.label || session.session_id.slice(0, 8)}\n\nClaude is now processing your request...`,
                 { parse_mode: 'Markdown' });
-            
+
             // Log command execution
-            this.logger.info(`Command injected - User: ${chatId}, Token: ${token}, Command: ${command}`);
-            
+            this.logger.info(`Command injected - User: ${chatId}, Token: ${token}, Session: ${session.session_id}, Command: ${command}`);
+
         } catch (error) {
             this.logger.error('Command injection failed:', error.message);
-            await this._sendMessage(chatId, 
+            await this._sendMessage(chatId,
                 `❌ *Command execution failed:* ${error.message}`,
                 { parse_mode: 'Markdown' });
         }
@@ -184,10 +272,52 @@ class TelegramWebhookHandler {
     async _handleCallbackQuery(callbackQuery) {
         const chatId = callbackQuery.message.chat.id;
         const data = callbackQuery.data;
-        
+
+        // Handle cmd:token:command format (from new inline buttons)
+        if (data.startsWith('cmd:')) {
+            const parts = data.split(':');
+            if (parts.length >= 3) {
+                const token = parts[1];
+                const command = parts.slice(2).join(':'); // In case command has colons
+
+                // Validate token using registry
+                const validation = this.registry.validateToken(token, chatId);
+                if (!validation.valid) {
+                    await this._answerCallbackQuery(callbackQuery.id, `❌ ${validation.error}`);
+                    return;
+                }
+
+                // Get session for transport info
+                const session = this.registry.getSession(validation.session_id);
+                if (!session) {
+                    await this._answerCallbackQuery(callbackQuery.id, '❌ Session not found');
+                    return;
+                }
+
+                try {
+                    // Inject command based on transport type
+                    await this._injectToSession(session, command);
+
+                    await this._answerCallbackQuery(callbackQuery.id, `✅ Sent: ${command}`);
+
+                    // Also send confirmation message
+                    const displayLabel = session.label || session.session_id.slice(0, 8);
+                    await this._sendMessage(chatId,
+                        `✅ *Command sent*\n\n📝 \`${command}\`\n🖥️ *Session:* ${displayLabel}`,
+                        { parse_mode: 'Markdown' });
+
+                    this.logger.info(`Button command sent: ${command} -> ${session.session_id}`);
+                } catch (error) {
+                    await this._answerCallbackQuery(callbackQuery.id, `❌ Failed: ${error.message}`);
+                    this.logger.error(`Button command failed: ${error.message}`);
+                }
+                return;
+            }
+        }
+
         // Answer callback query to remove loading state
         await this._answerCallbackQuery(callbackQuery.id);
-        
+
         if (data.startsWith('personal:')) {
             const token = data.split(':')[1];
             // Send personal chat command format
@@ -207,6 +337,75 @@ class TelegramWebhookHandler {
             await this._sendMessage(chatId,
                 `📝 *How to send a command:*\n\nType:\n\`/cmd ${token} <your command>\`\n\nExample:\n\`/cmd ${token} please analyze this code\`\n\n💡 *Tip:* New notifications have a button that auto-fills the command for you!`,
                 { parse_mode: 'Markdown' });
+        }
+    }
+
+    /**
+     * Inject command into a session based on its transport type
+     */
+    async _injectToSession(session, command) {
+        const transport = session.transport || {};
+
+        switch (transport.kind) {
+            case 'nvim': {
+                // Try nvim RPC first, fall back to tmux if available
+                if (transport.nvim_socket) {
+                    try {
+                        const instanceName = transport.instance_name || session.label || 'default';
+                        const injector = createInjector({
+                            logger: this.logger,
+                            session: {
+                                type: 'nvim',
+                                socketPath: transport.nvim_socket,
+                                instanceName: instanceName,
+                            }
+                        });
+                        const result = await injector.inject(command);
+                        if (result.ok) {
+                            this.logger.info('Command injected via nvim RPC');
+                            return;
+                        }
+                        this.logger.warn(`nvim injection failed: ${result.error}, trying tmux fallback`);
+                    } catch (error) {
+                        this.logger.warn(`nvim injection error: ${error.message}, trying tmux fallback`);
+                    }
+                }
+                // Fall back to tmux if nvim fails and tmux_session is available
+                if (transport.tmux_session) {
+                    const tmuxInjector = createInjector({
+                        logger: this.logger,
+                        session: { type: 'tmux', sessionName: transport.tmux_session }
+                    });
+                    const result = await tmuxInjector.inject(command);
+                    if (!result.ok) {
+                        throw new Error(result.error || 'tmux fallback injection failed');
+                    }
+                    this.logger.info('Command injected via tmux fallback');
+                    return;
+                }
+                throw new Error('nvim injection failed and no tmux fallback available');
+            }
+
+            case 'tmux': {
+                const tmuxInjector = createInjector({
+                    logger: this.logger,
+                    session: { type: 'tmux', sessionName: transport.session_name || 'claude-code' }
+                });
+                const result = await tmuxInjector.inject(command);
+                if (!result.ok) {
+                    throw new Error(result.error || 'tmux injection failed');
+                }
+                break;
+            }
+
+            case 'pty':
+                // PTY injection needs session key from old system
+                await this.injector.injectCommand(command, session.session_id);
+                break;
+
+            default:
+                // Fall back to label or session_id as injector key
+                await this.injector.injectCommand(command, session.label || session.session_id);
         }
     }
 
