@@ -73,11 +73,11 @@ class TmuxInjectorAdapter {
 
             // Clear current input (Ctrl-U)
             await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, 'C-u']);
-            await delay(50);
+            await delay(100);
 
             // Send the command (tmux send-keys handles escaping when passed as argument)
             await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, command]);
-            await delay(50);
+            await delay(100);
 
             // Send Enter (C-m)
             await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, 'C-m']);
