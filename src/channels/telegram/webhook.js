@@ -128,9 +128,10 @@ class TelegramWebhookHandler {
         if (response?.ok && response.result?.message_id > 0) {
             this.messageTokenStore.store(chatId, response.result.message_id, token);
             this.logger.debug(`Stored reply-to mapping: ${chatId}:${response.result.message_id} → ${token.slice(0, 8)}...`);
+            this.logger.info(`Stop notification sent for session: ${session.session_id} (${displayLabel})`);
+        } else {
+            this.logger.warn(`Stop notification failed for session: ${session.session_id} (${displayLabel})`);
         }
-
-        this.logger.info(`Stop notification sent for session: ${session.session_id} (${displayLabel})`);
 
         return { token };
     }
