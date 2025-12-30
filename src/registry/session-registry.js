@@ -77,6 +77,7 @@ class SessionRegistry {
             session_id: session.session_id,
             ppid: session.ppid ?? existing?.ppid,
             pid: session.pid ?? existing?.pid,
+            start_time: session.start_time ?? existing?.start_time,
             cwd: session.cwd ?? existing?.cwd,
             label: session.label ?? existing?.label,
             notify: session.notify ?? existing?.notify ?? false,
@@ -303,6 +304,95 @@ class SessionRegistry {
         }
 
         return count;
+    }
+
+    /**
+     * Clean up dead sessions by validating PID + start_time
+     * This catches sessions where the process has exited (faster than TTL expiry)
+     *
+     * @returns {number} Number of sessions cleaned up
+     */
+    async cleanupDeadSessions() {
+        const sessions = this._loadSessions();
+        let count = 0;
+        const toDelete = [];
+
+        for (const [id, session] of Object.entries(sessions)) {
+            // Only check sessions that have notify enabled (they're the ones that matter)
+            if (!session.notify) continue;
+
+            // Need at least ppid to validate
+            if (!session.ppid) continue;
+
+            const isAlive = await this._isProcessAlive(session.ppid, session.start_time);
+            if (!isAlive) {
+                toDelete.push(id);
+                this.logger.info?.(`Session ${id} (${session.label}) is dead (PID ${session.ppid} not running or start_time mismatch)`) ||
+                    this.logger.log?.(`Session ${id} (${session.label}) is dead`);
+            }
+        }
+
+        // Delete dead sessions
+        for (const id of toDelete) {
+            delete sessions[id];
+            count++;
+            this._cleanupTokensForSession(id);
+        }
+
+        if (count > 0) {
+            this._saveSessions(sessions);
+            this.logger.info?.(`Cleaned up ${count} dead sessions`) ||
+                this.logger.log?.(`Cleaned up ${count} dead sessions`);
+        }
+
+        return count;
+    }
+
+    /**
+     * Check if a process is alive and (optionally) has the expected start time
+     * @param {number} pid - Process ID
+     * @param {number|undefined} expectedStartTime - Expected start time as epoch seconds (optional)
+     * @returns {Promise<boolean>}
+     */
+    async _isProcessAlive(pid, expectedStartTime) {
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execAsync = promisify(exec);
+
+        try {
+            // Check if process exists and get its start time
+            // macOS: ps -o lstart= returns "Tue 30 Dec 13:14:35 2025"
+            const { stdout } = await execAsync(`ps -o lstart= -p ${pid} 2>/dev/null`);
+            const lstart = stdout.trim();
+
+            if (!lstart) {
+                return false; // Process doesn't exist
+            }
+
+            // If no expected start time, just check existence
+            if (!expectedStartTime) {
+                return true; // Process exists, can't validate start time
+            }
+
+            // Parse the start time (macOS format)
+            // Use date command to convert to epoch
+            try {
+                const { stdout: epochStr } = await execAsync(
+                    `date -j -f "%a %d %b %H:%M:%S %Y" "${lstart}" "+%s" 2>/dev/null`
+                );
+                const actualStartTime = parseInt(epochStr.trim(), 10);
+
+                // Allow 2 second tolerance for timing differences
+                return Math.abs(actualStartTime - expectedStartTime) <= 2;
+            } catch {
+                // If we can't parse the date, assume process is alive
+                // (better to send duplicate notification than miss one)
+                return true;
+            }
+        } catch {
+            // ps command failed - process doesn't exist
+            return false;
+        }
     }
 
     // =========================================================================

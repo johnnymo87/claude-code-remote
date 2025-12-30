@@ -86,6 +86,21 @@ async function start() {
     }
     
     webhookHandler.start(config.port);
+
+    // Start periodic cleanup of dead sessions (every 60 seconds)
+    // This validates PID + start_time to catch sessions where the process has exited
+    const CLEANUP_INTERVAL_MS = 60 * 1000;
+    setInterval(async () => {
+        try {
+            const count = await webhookHandler.registry.cleanupDeadSessions();
+            if (count > 0) {
+                logger.info(`Periodic cleanup: removed ${count} dead sessions`);
+            }
+        } catch (error) {
+            logger.error(`Periodic cleanup failed: ${error.message}`);
+        }
+    }, CLEANUP_INTERVAL_MS);
+    logger.info(`Dead session cleanup scheduled every ${CLEANUP_INTERVAL_MS / 1000}s`);
 }
 
 start();
