@@ -22,7 +22,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const DEFAULT_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const DEFAULT_TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 class SessionRegistry {
     /**
