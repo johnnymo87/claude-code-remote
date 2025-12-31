@@ -275,6 +275,7 @@ class TelegramWebhookHandler {
         // Validate token using registry
         const validation = this.registry.validateToken(token, chatId.toString());
         if (!validation.valid) {
+            this.logger.warn(`Token validation failed: ${validation.error} - Token: ${token.slice(0, 8)}..., Command: "${command.slice(0, 50)}..."`);
             await this._sendMessage(chatId,
                 `❌ ${validation.error}. Please wait for a new task notification.`,
                 { parse_mode: 'Markdown' });
@@ -325,6 +326,7 @@ class TelegramWebhookHandler {
                 // Validate token using registry
                 const validation = this.registry.validateToken(token, chatId);
                 if (!validation.valid) {
+                    this.logger.warn(`Callback token validation failed: ${validation.error} - Token: ${token.slice(0, 8)}..., Action: ${command}`);
                     await this._answerCallbackQuery(callbackQuery.id, `❌ ${validation.error}`);
                     return;
                 }
