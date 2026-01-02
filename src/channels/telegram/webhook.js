@@ -62,7 +62,6 @@ class TelegramWebhookHandler {
             registry: this.registry,
             logger: this.logger,
             onStop: this._handleStopEvent.bind(this),
-            injectToSession: this._injectToSession.bind(this),
         });
         this.app.use(eventRoutes);
     }

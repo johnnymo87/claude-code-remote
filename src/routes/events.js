@@ -14,11 +14,10 @@ const express = require('express');
  * @param {SessionRegistry} options.registry - Session registry instance
  * @param {object} options.logger - Logger instance
  * @param {function} options.onStop - Callback when Stop event fires (for notifications)
- * @param {function} options.injectToSession - Callback to inject text into a session
  * @returns {express.Router}
  */
 function createEventRoutes(options) {
-    const { registry, logger, onStop, injectToSession } = options;
+    const { registry, logger, onStop } = options;
     const router = express.Router();
 
     /**
@@ -290,53 +289,6 @@ function createEventRoutes(options) {
             logger.error?.(`Error in /cleanup: ${error.message}`) ||
                 logger.log?.(`Error in /cleanup: ${error.message}`);
             res.status(500).json({ error: error.message });
-        }
-    });
-
-    /**
-     * POST /research-complete
-     *
-     * Called by external tools (e.g., chatgpt-relay) when research completes.
-     * Injects a prompt into the Claude session to read the answer file.
-     *
-     * Body:
-     *   - session_id: string (required) - Claude session to notify
-     *   - answer_file: string (optional) - Path where answer was saved
-     */
-    router.post('/research-complete', async (req, res) => {
-        try {
-            const { session_id, answer_file } = req.body;
-
-            if (!session_id) {
-                return res.status(400).json({ ok: false, error: 'session_id is required' });
-            }
-
-            const session = registry.getSession(session_id);
-
-            if (!session) {
-                return res.status(404).json({ ok: false, error: 'Session not found' });
-            }
-
-            if (!injectToSession) {
-                return res.status(501).json({ ok: false, error: 'Injection not configured' });
-            }
-
-            // Construct the notification message
-            const message = answer_file
-                ? `Please read ${answer_file} and let's discuss it.`
-                : `Research complete. Answer copied to clipboard.`;
-
-            // Inject into Claude session
-            await injectToSession(session, message);
-
-            logger.info?.(`Research complete notification sent to session: ${session_id}`) ||
-                logger.log?.(`Research complete notification sent to session: ${session_id}`);
-
-            res.json({ ok: true });
-        } catch (error) {
-            logger.error?.(`Error in /research-complete: ${error.message}`) ||
-                logger.log?.(`Error in /research-complete: ${error.message}`);
-            res.status(500).json({ ok: false, error: error.message });
         }
     });
 
