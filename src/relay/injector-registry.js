@@ -57,7 +57,9 @@ function spawnAsync(cmd, args, opts = {}) {
 class TmuxInjectorAdapter {
     constructor(logger, session) {
         this.logger = logger;
-        this.sessionName = session.sessionName || session.tmuxSession || 'claude-code';
+        // Prefer pane_id (e.g., %47) which is stable within tmux server lifetime
+        // Fall back to session:window.pane format (can become stale if windows renumbered)
+        this.target = session.paneId || session.sessionName || session.tmuxSession || 'claude-code';
         this.capabilities = { capture: true };
     }
 
@@ -65,24 +67,24 @@ class TmuxInjectorAdapter {
         const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
         try {
-            // Check session exists
-            const hasSession = await spawnAsync('tmux', ['has-session', '-t', this.sessionName]);
-            if (hasSession.code !== 0) {
-                return { ok: false, error: `tmux session '${this.sessionName}' not found` };
+            // Check target exists (works for both pane_id like %47 and session:window.pane)
+            const hasTarget = await spawnAsync('tmux', ['has-session', '-t', this.target]);
+            if (hasTarget.code !== 0) {
+                return { ok: false, error: `tmux target '${this.target}' not found` };
             }
 
             // Clear current input (Ctrl-U)
-            await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, 'C-u']);
+            await spawnAsync('tmux', ['send-keys', '-t', this.target, 'C-u']);
             await delay(100);
 
             // Send the command (tmux send-keys handles escaping when passed as argument)
-            await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, command]);
+            await spawnAsync('tmux', ['send-keys', '-t', this.target, command]);
             await delay(100);
 
             // Send Enter (C-m)
-            await spawnAsync('tmux', ['send-keys', '-t', this.sessionName, 'C-m']);
+            await spawnAsync('tmux', ['send-keys', '-t', this.target, 'C-m']);
 
-            this.logger.debug(`Injected command to tmux session '${this.sessionName}'`);
+            this.logger.debug(`Injected command to tmux target '${this.target}'`);
             return { ok: true };
 
         } catch (error) {
@@ -96,7 +98,7 @@ class TmuxInjectorAdapter {
             const lines = opts.lines || 50;
             const result = await spawnAsync('tmux', [
                 'capture-pane',
-                '-t', this.sessionName,
+                '-t', this.target,
                 '-p',
                 '-S', `-${lines}`,
             ]);

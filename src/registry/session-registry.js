@@ -22,7 +22,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const DEFAULT_TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+const DEFAULT_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 class SessionRegistry {
     /**
@@ -106,23 +106,26 @@ class SessionRegistry {
      */
     _buildTransport(session, existing) {
         // If nvim_socket is provided, primary transport is nvim
-        // But also store tmux_session as fallback if available
+        // But also store tmux as fallback if available
         if (session.nvim_socket) {
             return {
                 kind: 'nvim',
                 nvim_socket: session.nvim_socket,
                 buffer: session.buffer ?? existing?.transport?.buffer,
                 instance_name: session.instance_name ?? existing?.transport?.instance_name,
-                // Store tmux as fallback if available (prefer tmux_pane over tmux_session for accurate targeting)
+                // Store tmux as fallback - prefer pane_id (stable) over session:window.pane (unstable)
+                tmux_pane_id: session.tmux_pane_id || existing?.transport?.tmux_pane_id,
                 tmux_session: session.tmux_pane || session.tmux_session || existing?.transport?.tmux_session,
             };
         }
 
         // If tmux_session is provided, it's a tmux session
-        // Prefer tmux_pane (includes window.pane) over tmux_session for accurate targeting
-        if (session.tmux_session || session.tmux_pane) {
+        // Prefer pane_id (e.g., %47) which is stable within tmux server lifetime
+        // Fallback to session:window.pane format (can become stale if windows renumbered)
+        if (session.tmux_session || session.tmux_pane || session.tmux_pane_id) {
             return {
                 kind: 'tmux',
+                pane_id: session.tmux_pane_id,
                 session_name: session.tmux_pane || session.tmux_session,
             };
         }

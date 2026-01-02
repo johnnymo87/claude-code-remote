@@ -414,11 +414,16 @@ class TelegramWebhookHandler {
                         this.logger.warn(`nvim injection error: ${error.message}, trying tmux fallback`);
                     }
                 }
-                // Fall back to tmux if nvim fails and tmux_session is available
-                if (transport.tmux_session) {
+                // Fall back to tmux if nvim fails and tmux info is available
+                // Prefer pane_id (stable) over session:window.pane (can become stale)
+                if (transport.tmux_pane_id || transport.tmux_session) {
                     const tmuxInjector = createInjector({
                         logger: this.logger,
-                        session: { type: 'tmux', sessionName: transport.tmux_session }
+                        session: {
+                            type: 'tmux',
+                            paneId: transport.tmux_pane_id,
+                            sessionName: transport.tmux_session
+                        }
                     });
                     const result = await tmuxInjector.inject(command);
                     if (!result.ok) {
@@ -431,9 +436,14 @@ class TelegramWebhookHandler {
             }
 
             case 'tmux': {
+                // Prefer pane_id (stable) over session_name (can become stale)
                 const tmuxInjector = createInjector({
                     logger: this.logger,
-                    session: { type: 'tmux', sessionName: transport.session_name || 'claude-code' }
+                    session: {
+                        type: 'tmux',
+                        paneId: transport.pane_id,
+                        sessionName: transport.session_name || 'claude-code'
+                    }
                 });
                 const result = await tmuxInjector.inject(command);
                 if (!result.ok) {

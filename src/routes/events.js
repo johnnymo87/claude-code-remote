@@ -37,7 +37,7 @@ function createEventRoutes(options) {
      */
     router.post('/session-start', (req, res) => {
         try {
-            const { session_id, ppid, pid, start_time, cwd, nvim_socket, tmux_session, tmux_pane, notify, label } = req.body;
+            const { session_id, ppid, pid, start_time, cwd, nvim_socket, tmux_session, tmux_pane, tmux_pane_id, notify, label } = req.body;
 
             if (!session_id) {
                 return res.status(400).json({ error: 'session_id is required' });
@@ -52,6 +52,7 @@ function createEventRoutes(options) {
                 nvim_socket,
                 tmux_session,
                 tmux_pane,
+                tmux_pane_id,
                 notify: notify ?? false,
                 label: label || undefined,
             });
