@@ -83,9 +83,6 @@ Detailed guidance for specific topics (in `.claude/skills/`):
 # Ensure devenv is active (direnv allow)
 node --version  # Should show v22.x
 
-# Run tests
-npm test
-
 # Start individual services
 npm run telegram      # Telegram webhook only
 npm run line          # LINE webhook only
