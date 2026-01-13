@@ -6,6 +6,9 @@
     npm.enable = true;
   };
 
+  # Python needed for node-gyp (building native modules like better-sqlite3, node-pty)
+  packages = [ pkgs.python3 ];
+
   dotenv.enable = true;
 
   enterShell = ''
