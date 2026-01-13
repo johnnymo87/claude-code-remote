@@ -54,3 +54,7 @@ src/data/
 
 # Claude configuration (user-specific)
 CLAUDE.md
+
+# Devenv
+.devenv/
+.devenv.flake.nix
