@@ -134,7 +134,10 @@ Claude Session
 direnv allow
 node --version  # Should show v22.x
 
-# Start individual services
+# Start ngrok tunnel (for receiving Telegram/LINE replies)
+source .env && ngrok http 4731 --url=$NGROK_DOMAIN
+
+# Start individual services (in another terminal)
 npm run telegram      # Telegram webhook only
 npm run line          # LINE webhook only
 npm run daemon:start  # Email daemon only

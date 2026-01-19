@@ -30,12 +30,14 @@ else
     echo "✅ TELEGRAM_CHAT_ID found"
 fi
 
-if [ -z "$TELEGRAM_WEBHOOK_URL" ]; then
-    echo "❌ TELEGRAM_WEBHOOK_URL not set in .env"
+if [ -z "$NGROK_DOMAIN" ]; then
+    echo "❌ NGROK_DOMAIN not set in .env"
     exit 1
 else
-    echo "✅ TELEGRAM_WEBHOOK_URL found: $TELEGRAM_WEBHOOK_URL"
+    echo "✅ NGROK_DOMAIN found: $NGROK_DOMAIN"
 fi
+
+TELEGRAM_WEBHOOK_URL="https://$NGROK_DOMAIN"
 
 # Test Telegram bot connection
 echo ""
@@ -84,7 +86,7 @@ echo "🔧 Checking running processes..."
 if pgrep -f "ngrok" > /dev/null; then
     echo "✅ ngrok is running"
 else
-    echo "⚠️  ngrok not found - make sure to run: ngrok http 3001"
+    echo "⚠️  ngrok not found - make sure to run: ngrok http 4731 --url=\$NGROK_DOMAIN"
 fi
 
 if pgrep -f "start-telegram-webhook" > /dev/null; then
@@ -112,7 +114,7 @@ echo "====================="
 echo "If all items above show ✅, your setup is ready!"
 echo ""
 echo "Next steps:"
-echo "1. Make sure ngrok is running: ngrok http 3001"
+echo "1. Make sure ngrok is running: ngrok http 4731 --url=\$NGROK_DOMAIN"
 echo "2. Make sure webhook service is running: node start-telegram-webhook.js"
 echo "3. Start Claude in tmux with hooks:"
 echo "   tmux attach -t claude-code"

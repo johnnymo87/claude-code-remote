@@ -8,6 +8,9 @@ Control Claude Code remotely via Telegram, Email, LINE, or Desktop notifications
 npm install
 npm run setup    # Configure channels, set up hooks
 npm run webhooks # Start notification services
+
+# For Telegram replies, start ngrok in another terminal:
+source .env && ngrok http 4731 --url=$NGROK_DOMAIN
 ```
 
 ## Commands
