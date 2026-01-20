@@ -13,7 +13,8 @@
     "relay:start": "INJECTION_MODE=pty node src/relay/relay-pty.js",
     "telegram": "node start-telegram-webhook.js",
     "line": "node start-line-webhook.js",
-    "webhooks": "node start-all-webhooks.js"
+    "webhooks": "node start-all-webhooks.js",
+    "webhooks:log": "mkdir -p ~/.local/state/claude-code-remote && node start-all-webhooks.js 2>&1 | tee ~/.local/state/claude-code-remote/daemon.log"
   },
   "keywords": [
     "claude-code",

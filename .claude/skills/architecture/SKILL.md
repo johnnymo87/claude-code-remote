@@ -142,6 +142,7 @@ npm run telegram      # Telegram webhook only
 npm run line          # LINE webhook only
 npm run daemon:start  # Email daemon only
 npm run webhooks      # All enabled webhooks
+npm run webhooks:log  # All webhooks + log to ~/.local/state/claude-code-remote/daemon.log
 
 # Test notifications
 node claude-hook-notify.js completed

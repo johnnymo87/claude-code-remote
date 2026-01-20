@@ -6,8 +6,8 @@ Control Claude Code remotely via Telegram, Email, LINE, or Desktop notifications
 
 ```bash
 npm install
-npm run setup    # Configure channels, set up hooks
-npm run webhooks # Start notification services
+npm run setup        # Configure channels, set up hooks
+npm run webhooks:log # Start services (logs to ~/.local/state/claude-code-remote/daemon.log)
 
 # For Telegram replies, start ngrok in another terminal:
 source .env && ngrok http 4731 --url=$NGROK_DOMAIN

@@ -111,7 +111,7 @@ node --version  # Should be v22.x
 Enable verbose logging:
 
 ```bash
-LOG_LEVEL=debug npm run webhooks
+LOG_LEVEL=debug npm run webhooks:log  # Logs to ~/.local/state/claude-code-remote/daemon.log
 DEBUG=true node claude-hook-notify.js completed
 ```
 
