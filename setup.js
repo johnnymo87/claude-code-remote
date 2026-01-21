@@ -169,7 +169,7 @@ function writeEnvFile(values, existingEnv) {
         'LINE_ENABLED', 'LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET',
         'LINE_USER_ID', 'LINE_GROUP_ID', 'LINE_WHITELIST', 'LINE_WEBHOOK_PORT',
         'TELEGRAM_ENABLED', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_GROUP_ID',
-        'TELEGRAM_WHITELIST', 'NGROK_DOMAIN', 'TELEGRAM_WEBHOOK_PORT',
+        'TELEGRAM_WHITELIST', 'WEBHOOK_DOMAIN', 'TELEGRAM_WEBHOOK_PORT',
         'TELEGRAM_FORCE_IPV4',
         'SESSION_MAP_PATH', 'INJECTION_MODE', 'CLAUDE_CLI_PATH', 'LOG_LEVEL'
     ];
@@ -398,7 +398,7 @@ async function main() {
         telegram.chatId = await ask(i18n.telegramConfig.chatId, existingEnv.TELEGRAM_CHAT_ID || '');
         telegram.groupId = await ask(i18n.telegramConfig.groupId, existingEnv.TELEGRAM_GROUP_ID || '');
         telegram.whitelist = await ask(i18n.telegramConfig.whitelist, existingEnv.TELEGRAM_WHITELIST || '');
-        telegram.ngrokDomain = await ask('ngrok domain (without https://)', existingEnv.NGROK_DOMAIN || '');
+        telegram.webhookDomain = await ask('Webhook domain (without https://)', existingEnv.WEBHOOK_DOMAIN || '');
         telegram.webhookPort = await ask(i18n.telegramConfig.webhookPort, existingEnv.TELEGRAM_WEBHOOK_PORT || '4731');
         telegram.forceIPv4 = await askYesNo(i18n.telegramConfig.forceIPv4, existingEnv.TELEGRAM_FORCE_IPV4 === 'true');
     }
@@ -441,7 +441,7 @@ async function main() {
             TELEGRAM_CHAT_ID: telegram.chatId,
             TELEGRAM_GROUP_ID: telegram.groupId,
             TELEGRAM_WHITELIST: telegram.whitelist,
-            NGROK_DOMAIN: telegram.ngrokDomain,
+            WEBHOOK_DOMAIN: telegram.webhookDomain,
             TELEGRAM_WEBHOOK_PORT: telegram.webhookPort,
             TELEGRAM_FORCE_IPV4: telegram.forceIPv4 ? 'true' : 'false'
         } : {}),

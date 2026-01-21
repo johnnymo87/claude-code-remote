@@ -26,7 +26,7 @@ const config = {
     groupId: process.env.TELEGRAM_GROUP_ID,
     whitelist: process.env.TELEGRAM_WHITELIST ? process.env.TELEGRAM_WHITELIST.split(',').map(id => id.trim()) : [],
     port: process.env.TELEGRAM_WEBHOOK_PORT || 4731,
-    webhookUrl: process.env.NGROK_DOMAIN ? `https://${process.env.NGROK_DOMAIN}` : undefined,
+    webhookUrl: process.env.WEBHOOK_DOMAIN ? `https://${process.env.WEBHOOK_DOMAIN}` : undefined,
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
     webhookPathSecret: process.env.TELEGRAM_WEBHOOK_PATH_SECRET,
     dropPendingUpdates: process.env.TELEGRAM_DROP_PENDING_UPDATES === 'true'
@@ -80,7 +80,7 @@ async function start() {
             logger.info(`curl -X POST https://api.telegram.org/bot${config.botToken}/setWebhook -d "url=${config.webhookUrl}/webhook/telegram"${secretParam}`);
         }
     } else {
-        logger.warn('NGROK_DOMAIN not set. Please set the webhook manually.');
+        logger.warn('WEBHOOK_DOMAIN not set. Please set the webhook manually.');
         logger.info('To set webhook manually, use:');
         logger.info(`curl -X POST https://api.telegram.org/bot${config.botToken}/setWebhook -d "url=https://your-domain.com/webhook/telegram" -d "secret_token=YOUR_SECRET"`);
     }

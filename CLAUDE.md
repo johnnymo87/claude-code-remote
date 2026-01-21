@@ -9,8 +9,8 @@ npm install
 npm run setup        # Configure channels, set up hooks
 npm run webhooks:log # Start services (logs to ~/.local/state/claude-code-remote/daemon.log)
 
-# For Telegram replies, start ngrok in another terminal:
-source .env && ngrok http 4731 --url=$NGROK_DOMAIN
+# For Telegram replies, expose port 4731 via tunnel (ngrok, cloudflared, etc.)
+# The WEBHOOK_DOMAIN env var should match your tunnel's public hostname
 ```
 
 ## Commands

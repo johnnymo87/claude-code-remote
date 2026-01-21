@@ -40,13 +40,12 @@ curl "https://api.telegram.org/bot<TOKEN>/getUpdates" | jq '.result[0].message.c
 TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=your-bot-token
 TELEGRAM_CHAT_ID=your-chat-id
-NGROK_DOMAIN=your-domain.ngrok-free.dev
+WEBHOOK_DOMAIN=your-domain.example.com
 ```
 
 **Step 4: Set up webhook** (for receiving replies)
-```bash
-source .env && ngrok http 4731 --url=$NGROK_DOMAIN
-```
+
+Expose port 4731 via tunnel (ngrok, cloudflared, etc.) with your WEBHOOK_DOMAIN.
 
 ### Email
 
