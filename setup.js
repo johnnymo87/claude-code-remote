@@ -59,9 +59,7 @@ const icons = {
     bullet: '•',
     star: '★',
     robot: '🤖',
-    email: '📧',
     telegram: '💬',
-    line: '💚',
     globe: '🌐',
     key: '🔑',
     gear: '⚙️',
@@ -163,11 +161,6 @@ function serializeEnvValue(value) {
 
 function writeEnvFile(values, existingEnv) {
     const orderedKeys = [
-        'EMAIL_ENABLED', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS',
-        'EMAIL_FROM', 'EMAIL_FROM_NAME', 'IMAP_HOST', 'IMAP_PORT', 'IMAP_SECURE',
-        'IMAP_USER', 'IMAP_PASS', 'EMAIL_TO', 'ALLOWED_SENDERS', 'CHECK_INTERVAL',
-        'LINE_ENABLED', 'LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET',
-        'LINE_USER_ID', 'LINE_GROUP_ID', 'LINE_WHITELIST', 'LINE_WEBHOOK_PORT',
         'TELEGRAM_ENABLED', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_GROUP_ID',
         'TELEGRAM_WHITELIST', 'WEBHOOK_DOMAIN', 'TELEGRAM_WEBHOOK_PORT',
         'TELEGRAM_FORCE_IPV4',
@@ -276,7 +269,7 @@ async function main() {
 
     // Basic Configuration
     printSection(lang === 'en' ? 'Basic Configuration' : '基本配置', icons.gear);
-    
+
     const sessionMapPath = await ask(i18n.sessionMapPath, existingEnv.SESSION_MAP_PATH || defaultSessionMap);
     let injectionMode = (await ask(i18n.injectionMode, existingEnv.INJECTION_MODE || 'pty')).toLowerCase();
     if (!['tmux', 'pty'].includes(injectionMode)) {
@@ -285,175 +278,26 @@ async function main() {
     }
     const logLevel = await ask(i18n.logLevel, existingEnv.LOG_LEVEL || 'info');
 
-    // Email Configuration
-    const emailEnabled = await askYesNo(`${icons.email} ${i18n.enableEmail}`, existingEnv.EMAIL_ENABLED === 'true');
-    const email = {};
-    if (emailEnabled) {
-        printSection(i18n.emailConfig.title, icons.email);
-        
-        // Email provider quick setup
-        const providerChoice = await askSelect(i18n.emailConfig.quickSetup, [
-            { label: i18n.emailConfig.gmail, value: 'gmail' },
-            { label: i18n.emailConfig.outlook, value: 'outlook' },
-            { label: i18n.emailConfig.qq, value: 'qq' },
-            { label: i18n.emailConfig['163'], value: '163' },
-            { label: dim(i18n.emailConfig.manual), value: 'manual' }
-        ], 0);
-        
-        const emailPresets = {
-            gmail: {
-                smtpHost: 'smtp.gmail.com',
-                smtpPort: '465',
-                smtpSecure: true,
-                imapHost: 'imap.gmail.com',
-                imapPort: '993',
-                imapSecure: true
-            },
-            outlook: {
-                smtpHost: 'smtp-mail.outlook.com',
-                smtpPort: '587',
-                smtpSecure: false,
-                imapHost: 'outlook.office365.com',
-                imapPort: '993',
-                imapSecure: true
-            },
-            qq: {
-                smtpHost: 'smtp.qq.com',
-                smtpPort: '465',
-                smtpSecure: true,
-                imapHost: 'imap.qq.com',
-                imapPort: '993',
-                imapSecure: true
-            },
-            '163': {
-                smtpHost: 'smtp.163.com',
-                smtpPort: '465',
-                smtpSecure: true,
-                imapHost: 'imap.163.com',
-                imapPort: '993',
-                imapSecure: true
-            }
-        };
-        
-        if (providerChoice.value !== 'manual') {
-            const preset = emailPresets[providerChoice.value];
-            console.log('\n' + info(i18n.emailConfig.setupInstructions[providerChoice.value]));
-            
-            email.emailAddress = await ask(i18n.emailConfig.email, existingEnv.SMTP_USER || '');
-            email.appPassword = await ask(`${icons.key} ${i18n.emailConfig.appPassword}`, existingEnv.SMTP_PASS || '');
-            
-            email.smtpHost = preset.smtpHost;
-            email.smtpPort = preset.smtpPort;
-            email.smtpSecure = preset.smtpSecure;
-            email.smtpUser = email.emailAddress;
-            email.smtpPass = email.appPassword;
-            email.emailFrom = email.emailAddress;
-            email.emailFromName = existingEnv.EMAIL_FROM_NAME || 'Claude Code Remote';
-            email.emailTo = email.emailAddress;
-            email.allowedSenders = email.emailAddress;
-            
-            email.imapHost = preset.imapHost;
-            email.imapPort = preset.imapPort;
-            email.imapSecure = preset.imapSecure;
-            email.imapUser = email.emailAddress;
-            email.imapPass = email.appPassword;
-        } else {
-            // Manual configuration
-            console.log(dim('\nManual email configuration...'));
-            email.smtpHost = await ask(i18n.emailConfig.smtpHost, existingEnv.SMTP_HOST || 'smtp.gmail.com');
-            email.smtpPort = await ask(i18n.emailConfig.smtpPort, existingEnv.SMTP_PORT || '465');
-            email.smtpSecure = await askYesNo(i18n.emailConfig.smtpSecure, existingEnv.SMTP_SECURE === 'true' || existingEnv.SMTP_SECURE === undefined);
-            email.smtpUser = await ask(i18n.emailConfig.smtpUser, existingEnv.SMTP_USER || '');
-            email.smtpPass = await ask(i18n.emailConfig.smtpPass, existingEnv.SMTP_PASS || '');
-            email.emailFrom = await ask(i18n.emailConfig.emailFrom, existingEnv.EMAIL_FROM || email.smtpUser);
-            email.emailFromName = await ask(i18n.emailConfig.emailFromName, existingEnv.EMAIL_FROM_NAME || 'Claude Code Remote');
-            email.emailTo = await ask(i18n.emailConfig.emailTo, existingEnv.EMAIL_TO || email.smtpUser);
-            email.allowedSenders = await ask(i18n.emailConfig.allowedSenders, existingEnv.ALLOWED_SENDERS || email.emailTo);
-            
-            const reuseImap = await askYesNo(i18n.emailConfig.reuseImap, true);
-            if (reuseImap) {
-                email.imapHost = email.smtpHost.replace('smtp', 'imap');
-                email.imapPort = '993';
-                email.imapSecure = true;
-                email.imapUser = email.smtpUser;
-                email.imapPass = email.smtpPass;
-            } else {
-                email.imapHost = await ask(i18n.emailConfig.imapHost, existingEnv.IMAP_HOST || '');
-                email.imapPort = await ask(i18n.emailConfig.imapPort, existingEnv.IMAP_PORT || '993');
-                email.imapSecure = await askYesNo(i18n.emailConfig.imapSecure, existingEnv.IMAP_SECURE === 'true' || existingEnv.IMAP_SECURE === undefined);
-                email.imapUser = await ask(i18n.emailConfig.imapUser, existingEnv.IMAP_USER || email.smtpUser || '');
-                email.imapPass = await ask(i18n.emailConfig.imapPass, existingEnv.IMAP_PASS || email.smtpPass || '');
-            }
-        }
-        
-        email.checkInterval = await ask(i18n.emailConfig.checkInterval, existingEnv.CHECK_INTERVAL || '20');
-    }
-
     // Telegram Configuration
-    const telegramEnabled = await askYesNo(`${icons.telegram} ${i18n.enableTelegram}`, existingEnv.TELEGRAM_ENABLED === 'true');
+    printSection('Telegram Configuration', icons.telegram);
     const telegram = {};
-    if (telegramEnabled) {
-        printSection('Telegram Configuration', icons.telegram);
-        telegram.botToken = await ask(i18n.telegramConfig.botToken, existingEnv.TELEGRAM_BOT_TOKEN || '');
-        telegram.chatId = await ask(i18n.telegramConfig.chatId, existingEnv.TELEGRAM_CHAT_ID || '');
-        telegram.groupId = await ask(i18n.telegramConfig.groupId, existingEnv.TELEGRAM_GROUP_ID || '');
-        telegram.whitelist = await ask(i18n.telegramConfig.whitelist, existingEnv.TELEGRAM_WHITELIST || '');
-        telegram.webhookDomain = await ask('Webhook domain (without https://)', existingEnv.WEBHOOK_DOMAIN || '');
-        telegram.webhookPort = await ask(i18n.telegramConfig.webhookPort, existingEnv.TELEGRAM_WEBHOOK_PORT || '4731');
-        telegram.forceIPv4 = await askYesNo(i18n.telegramConfig.forceIPv4, existingEnv.TELEGRAM_FORCE_IPV4 === 'true');
-    }
-
-    // LINE Configuration
-    const lineEnabled = await askYesNo(`${icons.line} ${i18n.enableLine}`, existingEnv.LINE_ENABLED === 'true');
-    const line = {};
-    if (lineEnabled) {
-        printSection('LINE Configuration', icons.line);
-        line.channelAccessToken = await ask(i18n.lineConfig.channelAccessToken, existingEnv.LINE_CHANNEL_ACCESS_TOKEN || '');
-        line.channelSecret = await ask(i18n.lineConfig.channelSecret, existingEnv.LINE_CHANNEL_SECRET || '');
-        line.userId = await ask(i18n.lineConfig.userId, existingEnv.LINE_USER_ID || '');
-        line.groupId = await ask(i18n.lineConfig.groupId, existingEnv.LINE_GROUP_ID || '');
-        line.whitelist = await ask(i18n.lineConfig.whitelist, existingEnv.LINE_WHITELIST || '');
-        line.webhookPort = await ask(i18n.lineConfig.webhookPort, existingEnv.LINE_WEBHOOK_PORT || '3000');
-    }
+    telegram.botToken = await ask(i18n.telegramConfig.botToken, existingEnv.TELEGRAM_BOT_TOKEN || '');
+    telegram.chatId = await ask(i18n.telegramConfig.chatId, existingEnv.TELEGRAM_CHAT_ID || '');
+    telegram.groupId = await ask(i18n.telegramConfig.groupId, existingEnv.TELEGRAM_GROUP_ID || '');
+    telegram.whitelist = await ask(i18n.telegramConfig.whitelist, existingEnv.TELEGRAM_WHITELIST || '');
+    telegram.webhookDomain = await ask('Webhook domain (without https://)', existingEnv.WEBHOOK_DOMAIN || '');
+    telegram.webhookPort = await ask(i18n.telegramConfig.webhookPort, existingEnv.TELEGRAM_WEBHOOK_PORT || '4731');
+    telegram.forceIPv4 = await askYesNo(i18n.telegramConfig.forceIPv4, existingEnv.TELEGRAM_FORCE_IPV4 === 'true');
 
     const envValues = {
-        EMAIL_ENABLED: emailEnabled ? 'true' : 'false',
-        ...(emailEnabled ? {
-            SMTP_HOST: email.smtpHost,
-            SMTP_PORT: email.smtpPort,
-            SMTP_SECURE: email.smtpSecure ? 'true' : 'false',
-            SMTP_USER: email.smtpUser,
-            SMTP_PASS: email.smtpPass,
-            EMAIL_FROM: email.emailFrom,
-            EMAIL_FROM_NAME: email.emailFromName,
-            IMAP_HOST: email.imapHost,
-            IMAP_PORT: email.imapPort,
-            IMAP_SECURE: email.imapSecure ? 'true' : 'false',
-            IMAP_USER: email.imapUser,
-            IMAP_PASS: email.imapPass,
-            EMAIL_TO: email.emailTo,
-            ALLOWED_SENDERS: email.allowedSenders,
-            CHECK_INTERVAL: email.checkInterval
-        } : {}),
-        TELEGRAM_ENABLED: telegramEnabled ? 'true' : 'false',
-        ...(telegramEnabled ? {
-            TELEGRAM_BOT_TOKEN: telegram.botToken,
-            TELEGRAM_CHAT_ID: telegram.chatId,
-            TELEGRAM_GROUP_ID: telegram.groupId,
-            TELEGRAM_WHITELIST: telegram.whitelist,
-            WEBHOOK_DOMAIN: telegram.webhookDomain,
-            TELEGRAM_WEBHOOK_PORT: telegram.webhookPort,
-            TELEGRAM_FORCE_IPV4: telegram.forceIPv4 ? 'true' : 'false'
-        } : {}),
-        LINE_ENABLED: lineEnabled ? 'true' : 'false',
-        ...(lineEnabled ? {
-            LINE_CHANNEL_ACCESS_TOKEN: line.channelAccessToken,
-            LINE_CHANNEL_SECRET: line.channelSecret,
-            LINE_USER_ID: line.userId,
-            LINE_GROUP_ID: line.groupId,
-            LINE_WHITELIST: line.whitelist,
-            LINE_WEBHOOK_PORT: line.webhookPort
-        } : {}),
+        TELEGRAM_ENABLED: 'true',
+        TELEGRAM_BOT_TOKEN: telegram.botToken,
+        TELEGRAM_CHAT_ID: telegram.chatId,
+        TELEGRAM_GROUP_ID: telegram.groupId,
+        TELEGRAM_WHITELIST: telegram.whitelist,
+        WEBHOOK_DOMAIN: telegram.webhookDomain,
+        TELEGRAM_WEBHOOK_PORT: telegram.webhookPort,
+        TELEGRAM_FORCE_IPV4: telegram.forceIPv4 ? 'true' : 'false',
         SESSION_MAP_PATH: sessionMapPath,
         INJECTION_MODE: injectionMode,
         LOG_LEVEL: logLevel
