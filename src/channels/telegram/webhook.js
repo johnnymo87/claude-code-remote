@@ -9,18 +9,16 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const Logger = require('../../core/logger');
-const ControllerInjector = require('../../utils/controller-injector');
 const SessionRegistry = require('../../registry/session-registry');
 const MessageTokenStore = require('../../storage/message-token-store');
 const { createEventRoutes } = require('../../routes/events');
-const { createInjector } = require('../../relay/injector-registry');
+const { createInjector } = require('./injector');
 
 class TelegramWebhookHandler {
     constructor(config = {}) {
         this.config = config;
         this.logger = new Logger('TelegramWebhook');
         this.sessionsDir = path.join(__dirname, '../../data/sessions');
-        this.injector = new ControllerInjector();
         this.app = express();
         this.apiBaseUrl = 'https://api.telegram.org';
         this.botUsername = null; // Cache for bot username
@@ -527,14 +525,26 @@ class TelegramWebhookHandler {
                 break;
             }
 
-            case 'pty':
-                // PTY injection needs session key from old system
-                await this.injector.injectCommand(command, session.session_id);
-                break;
-
             default:
-                // Fall back to label or session_id as injector key
-                await this.injector.injectCommand(command, session.label || session.session_id);
+                // No transport or unsupported type - try tmux as fallback
+                // This handles legacy sessions that may not have transport info
+                if (transport.pane_id || transport.session_name) {
+                    const tmuxInjector = createInjector({
+                        logger: this.logger,
+                        session: {
+                            type: 'tmux',
+                            paneId: transport.pane_id,
+                            sessionName: transport.session_name || 'claude-code'
+                        }
+                    });
+                    const result = await tmuxInjector.inject(command);
+                    if (!result.ok) {
+                        throw new Error(result.error || 'tmux injection failed');
+                    }
+                    this.logger.info('Command injected via tmux (legacy fallback)');
+                } else {
+                    throw new Error(`Unsupported transport kind: ${transport.kind || 'none'}. Use nvim or tmux.`);
+                }
         }
     }
 
