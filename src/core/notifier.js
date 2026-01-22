@@ -211,7 +211,6 @@ class Notifier {
             channels,
             config: {
                 language: this.config.get('language'),
-                sound: this.config.get('sound'),
                 customMessages: this.config.get('customMessages')
             }
         };

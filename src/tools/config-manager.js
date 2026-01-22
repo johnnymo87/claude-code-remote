@@ -49,9 +49,7 @@ class ConfigurationManager {
         console.log('\nCurrent configuration:');
         console.log('├─ Language:', this.config.get('language'));
         console.log('├─ Enabled status:', this.config.get('enabled') ? 'Enabled' : 'Disabled');
-        console.log('├─ Timeout:', this.config.get('timeout') + ' seconds');
-        console.log('├─ Completion sound:', this.config.get('sound.completed'));
-        console.log('└─ Waiting sound:', this.config.get('sound.waiting'));
+        console.log('└─ Timeout:', this.config.get('timeout') + ' seconds');
         console.log();
     }
 
