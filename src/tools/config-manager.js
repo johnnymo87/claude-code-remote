@@ -61,32 +61,28 @@ class ConfigurationManager {
             this.displayCurrentConfig();
             console.log('Options:');
             console.log('1. Basic Settings');
-            console.log('2. Sound Configuration');
-            console.log('3. Notification Channels');
-            console.log('4. Command Relay');
-            console.log('5. Test Notifications');
-            console.log('6. Save and Exit');
-            console.log('7. Exit (without saving)');
+            console.log('2. Notification Channels');
+            console.log('3. Command Relay');
+            console.log('4. Test Notifications');
+            console.log('5. Save and Exit');
+            console.log('6. Exit (without saving)');
 
-            const choice = await this.question('\nPlease select (1-7): ');
+            const choice = await this.question('\nPlease select (1-6): ');
 
             switch (choice) {
                 case '1':
                     await this.configureBasicSettings();
                     break;
                 case '2':
-                    await this.configureSounds();
-                    break;
-                case '3':
                     await this.configureChannels();
                     break;
-                case '4':
+                case '3':
                     await this.configureRelay();
                     break;
-                case '5':
+                case '4':
                     await this.testNotifications();
                     break;
-                case '6':
+                case '5':
                     if (this.config.save()) {
                         console.log('✅ Configuration saved');
                         this.rl.close();
@@ -95,7 +91,7 @@ class ConfigurationManager {
                         console.log('❌ Save failed');
                     }
                     break;
-                case '7':
+                case '6':
                     console.log('Exit (changes not saved)');
                     this.rl.close();
                     return;
@@ -170,130 +166,58 @@ class ConfigurationManager {
         }
     }
 
-    async configureSounds() {
-        // Load desktop channel to get available sounds
-        const DesktopChannel = require('../channels/local/desktop');
-        const desktop = new DesktopChannel();
-        const soundCategories = desktop.getAvailableSounds();
-
-        console.log('\n=== Sound Configuration ===');
-        
-        // Configure completed sound
-        console.log('\n--- Configure Task Completion Sound ---');
-        const completedSound = await this.selectSoundFromCategories(soundCategories, 'task completion');
-        if (completedSound) {
-            this.config.set('sound.completed', completedSound);
-            console.log(`✅ Task completion sound set to: ${completedSound}`);
-        }
-
-        // Configure waiting sound
-        console.log('\n--- Configure Waiting Input Sound ---');
-        const waitingSound = await this.selectSoundFromCategories(soundCategories, 'waiting input');
-        if (waitingSound) {
-            this.config.set('sound.waiting', waitingSound);
-            console.log(`✅ Waiting input sound set to: ${waitingSound}`);
-        }
-    }
-
-    async selectSoundFromCategories(soundCategories, type) {
-        const categories = Object.keys(soundCategories);
-        
-        console.log(`\nSelect ${type} sound category:`);
-        categories.forEach((category, index) => {
-            const count = soundCategories[category].length;
-            console.log(`${index + 1}. ${category} (${count} sounds)`);
-        });
-        console.log('0. Skip');
-
-        const choice = await this.question(`\nPlease select category (0-${categories.length}): `);
-        const index = parseInt(choice) - 1;
-
-        if (choice === '0') {
-            return null;
-        }
-
-        if (index >= 0 && index < categories.length) {
-            const category = categories[index];
-            const sounds = soundCategories[category];
-            return await this.selectSoundFromList(sounds, type);
-        } else {
-            console.log('❌ Invalid selection');
-            return null;
-        }
-    }
-
-    async selectSoundFromList(sounds, type) {
-        console.log(`\nSelect ${type} sound:`);
-        sounds.forEach((sound, index) => {
-            console.log(`${index + 1}. ${sound}`);
-        });
-        console.log('0. Return to category selection');
-
-        const choice = await this.question(`\nPlease select (0-${sounds.length}): `);
-        const index = parseInt(choice) - 1;
-
-        if (choice === '0') {
-            return null;
-        }
-
-        if (index >= 0 && index < sounds.length) {
-            const selectedSound = sounds[index];
-            
-            // Play sound preview
-            try {
-                const DesktopChannel = require('../channels/local/desktop');
-                const desktop = new DesktopChannel();
-                desktop._playSound(selectedSound);
-                console.log(`Playing sound: ${selectedSound}`);
-            } catch (error) {
-                // Ignore playback errors
-            }
-
-            const confirm = await this.question('Confirm using this sound? (y/n): ');
-            if (confirm.toLowerCase() === 'y' || confirm.toLowerCase() === 'yes') {
-                return selectedSound;
-            }
-        } else {
-            console.log('❌ Invalid selection');
-        }
-
-        return null;
-    }
-
     async configureChannels() {
         console.log('\n=== Notification Channel Configuration ===');
-        console.log('1. Desktop Notifications (Enabled)');
-        console.log('2. Email Notifications');
-        console.log('3. Discord Notifications (Coming Soon)');
-        console.log('4. Telegram Notifications (Coming Soon)');
-        console.log('5. WhatsApp Notifications (Coming Soon)');
-        console.log('6. Feishu Notifications (Coming Soon)');
+        console.log('1. Telegram Notifications');
         console.log('0. Return to Main Menu');
 
-        const choice = await this.question('\nPlease select channel to configure (0-6): ');
+        const choice = await this.question('\nPlease select channel to configure (0-1): ');
 
         switch (choice) {
             case '1':
-                console.log('\nDesktop notifications are enabled and working properly!');
-                break;
-            case '2':
-                await this.configureEmailChannel();
-                break;
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-                console.log('\nThis channel will be supported in future versions!');
+                await this.configureTelegramChannel();
                 break;
             case '0':
                 return;
             default:
                 console.log('❌ Invalid selection');
         }
-        
+
         if (choice !== '0') {
             await this.question('\nPress Enter to continue...');
         }
+    }
+
+    async configureTelegramChannel() {
+        console.log('\n=== Telegram Notification Configuration ===');
+
+        const currentConfig = this.config.getChannel('telegram') || { enabled: false, config: {} };
+        const telegramConfig = currentConfig.config || {};
+
+        console.log(`Current status: ${currentConfig.enabled ? '✅ Enabled' : '❌ Disabled'}`);
+
+        // Bot token configuration
+        const currentToken = telegramConfig.botToken || '';
+        console.log(`Current bot token: ${currentToken ? '[Configured]' : 'Not configured'}`);
+        const botToken = await this.question('Bot token (from @BotFather): ');
+
+        // Chat ID configuration
+        const currentChatId = telegramConfig.chatId || '';
+        console.log(`Current chat ID: ${currentChatId || 'Not configured'}`);
+        const chatId = await this.question('Chat ID: ');
+
+        // Build telegram configuration
+        const newTelegramConfig = {
+            enabled: true,
+            config: {
+                botToken: botToken || currentToken,
+                chatId: chatId || currentChatId
+            }
+        };
+
+        // Save configuration
+        this.config.setChannel('telegram', newTelegramConfig);
+        console.log('\n✅ Telegram configuration saved');
     }
 
     async configureRelay() {
@@ -352,139 +276,6 @@ class ConfigurationManager {
         await this.question('\nPress Enter to continue...');
     }
 
-    async configureEmailChannel() {
-        console.log('\n=== Email Notification Configuration ===');
-        
-        // Get current email configuration
-        const currentEmailConfig = this.config.getChannel('email') || { enabled: false, config: {} };
-        const emailConfig = currentEmailConfig.config || {};
-        
-        console.log(`Current status: ${currentEmailConfig.enabled ? '✅ Enabled' : '❌ Disabled'}`);
-        
-        console.log('\n📧 SMTP Sending Configuration:');
-        
-        // SMTP host configuration
-        const currentHost = emailConfig.smtp?.host || '';
-        console.log(`Current SMTP host: ${currentHost || 'Not configured'}`);
-        const smtpHost = await this.question('SMTP host (e.g., smtp.gmail.com): ');
-        
-        // SMTP port configuration
-        const currentPort = emailConfig.smtp?.port || 587;
-        console.log(`Current SMTP port: ${currentPort}`);
-        const smtpPortInput = await this.question('SMTP port (default 587): ');
-        const smtpPort = parseInt(smtpPortInput) || 587;
-        
-        // Security connection configuration
-        const currentSecure = emailConfig.smtp?.secure || false;
-        console.log(`Current secure connection: ${currentSecure ? 'SSL/TLS' : 'STARTTLS'}`);
-        const secureInput = await this.question('Use SSL/TLS? (y/n, default n): ');
-        const secure = secureInput.toLowerCase() === 'y';
-        
-        // Username configuration
-        const currentUser = emailConfig.smtp?.auth?.user || '';
-        console.log(`Current username: ${currentUser || 'Not configured'}`);
-        const smtpUser = await this.question('SMTP username (email address): ');
-        
-        // Password configuration
-        console.log('SMTP password: [Hidden]');
-        const smtpPass = await this.question('SMTP password (app password): ');
-        
-        console.log('\n📥 IMAP Receiving Configuration (for receiving replies):');
-        
-        // IMAP host configuration
-        const currentImapHost = emailConfig.imap?.host || '';
-        console.log(`Current IMAP host: ${currentImapHost || 'Not configured'}`);
-        const imapHost = await this.question('IMAP host (e.g., imap.gmail.com): ');
-        
-        // IMAP port configuration
-        const currentImapPort = emailConfig.imap?.port || 993;
-        console.log(`Current IMAP port: ${currentImapPort}`);
-        const imapPortInput = await this.question('IMAP port (default 993): ');
-        const imapPort = parseInt(imapPortInput) || 993;
-        
-        // IMAP secure connection
-        const currentImapSecure = emailConfig.imap?.secure !== false;
-        const imapSecureInput = await this.question('IMAP use SSL? (y/n, default y): ');
-        const imapSecure = imapSecureInput.toLowerCase() !== 'n';
-        
-        // Recipient configuration
-        console.log('\n📬 Recipient Configuration:');
-        const currentTo = emailConfig.to || '';
-        console.log(`Current recipient: ${currentTo || 'Not configured'}`);
-        const toEmail = await this.question('Recipient email: ');
-        
-        // Sender configuration
-        const currentFrom = emailConfig.from || '';
-        console.log(`Current sender: ${currentFrom || 'Not configured'}`);
-        const fromEmail = await this.question(`Sender display name (default: Claude-Code-Remote <${smtpUser}>): `);
-        
-        // Build email configuration
-        const newEmailConfig = {
-            enabled: true,
-            config: {
-                smtp: {
-                    host: smtpHost || currentHost,
-                    port: smtpPort,
-                    secure: secure,
-                    auth: {
-                        user: smtpUser || currentUser,
-                        pass: smtpPass || emailConfig.smtp?.auth?.pass || ''
-                    }
-                },
-                imap: {
-                    host: imapHost || currentImapHost,
-                    port: imapPort,
-                    secure: imapSecure,
-                    auth: {
-                        user: smtpUser || currentUser,
-                        pass: smtpPass || emailConfig.imap?.auth?.pass || ''
-                    }
-                },
-                from: fromEmail || `Claude-Code-Remote <${smtpUser || currentUser}>`,
-                to: toEmail || currentTo
-            }
-        };
-        
-        // Save configuration
-        this.config.setChannel('email', newEmailConfig);
-        console.log('\n✅ Email configuration saved');
-        
-        // Ask whether to test
-        const testChoice = await this.question('\nTest email sending? (y/n): ');
-        if (testChoice.toLowerCase() === 'y') {
-            await this.testEmailChannel();
-        }
-    }
-    
-    async testEmailChannel() {
-        console.log('\n🧪 Testing email sending...');
-        
-        try {
-            const EmailChannel = require('../channels/email/smtp');
-            const emailConfig = this.config.getChannel('email');
-            
-            if (!emailConfig || !emailConfig.enabled) {
-                console.log('❌ Email channel not enabled');
-                return;
-            }
-            
-            const emailChannel = new EmailChannel(emailConfig.config);
-            const testResult = await emailChannel.test();
-            
-            if (testResult) {
-                console.log('✅ Email sending test successful!');
-                console.log('📧 Please check your inbox, you should receive a test email');
-                console.log('💡 You can try replying to that email to test the command relay feature');
-            } else {
-                console.log('❌ Email sending test failed');
-                console.log('Please check if your SMTP configuration is correct');
-            }
-        } catch (error) {
-            console.log('❌ Email test failed:', error.message);
-            console.log('Please check your network connection and email configuration');
-        }
-    }
-
     showHelp() {
         console.log(`
 Claude-Code-Remote Configuration Manager
@@ -497,10 +288,9 @@ Options:
 
 Interactive Commands:
   1. Basic Settings    - Language, enabled status, timeout, etc.
-  2. Sound Configuration    - Configure task completion and waiting input sounds
-  3. Notification Channels    - Configure email, Discord, Telegram and other notification channels
-  4. Command Relay    - Configure remote command execution features
-  5. Test Notifications    - Test all configured notification channels
+  2. Notification Channels    - Configure Telegram notifications
+  3. Command Relay    - Configure remote command execution features
+  4. Test Notifications    - Test all configured notification channels
         `);
     }
 }
