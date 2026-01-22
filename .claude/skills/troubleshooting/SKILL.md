@@ -66,22 +66,37 @@ Common issues:
 - Missing secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET)
 - Durable Object not created (check migrations in wrangler.toml)
 
-### Telegram 404 from Worker (bot token invalid)
+### Worker secrets corrupted (Telegram 404 or 401 errors)
 
-If Worker notifications fail with Telegram 404, the bot token secret is corrupted (often from shell escaping when set via `echo`).
+If Worker fails with:
+- **Telegram 404**: Bot token secret is invalid
+- **Telegram 401 Unauthorized**: Webhook secret mismatch
 
-**Fix:** Re-set using file input:
+This is often caused by shell escaping when setting secrets via `echo | wrangler secret put`.
+
+**Fix:** Re-set secrets using file input:
 ```bash
 cd ~/projects/ccr-worker
 export CLOUDFLARE_API_TOKEN="$(cat /run/secrets/cloudflare_api_token)"
 
-# Extract and set token without shell escaping issues
-grep -o 'TELEGRAM_BOT_TOKEN=.*' ~/projects/claude-code-remote/.env | cut -d= -f2 > /tmp/token.txt
-wrangler secret put TELEGRAM_BOT_TOKEN < /tmp/token.txt
-rm /tmp/token.txt
+# Bot token (fixes 404)
+grep -o 'TELEGRAM_BOT_TOKEN=.*' ~/projects/claude-code-remote/.env | cut -d= -f2 > /tmp/secret.txt
+wrangler secret put TELEGRAM_BOT_TOKEN < /tmp/secret.txt
+rm /tmp/secret.txt
+
+# Webhook secret (fixes 401)
+grep -o 'TELEGRAM_WEBHOOK_SECRET=.*' ~/projects/claude-code-remote/.env | cut -d= -f2 > /tmp/secret.txt
+wrangler secret put TELEGRAM_WEBHOOK_SECRET < /tmp/secret.txt
+rm /tmp/secret.txt
 ```
 
-**Verify:** Test notification through Worker (see ccr-worker README).
+**Verify:**
+```bash
+# Check webhook status (should show no recent errors)
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq '{url, last_error_message}'
+
+# Test notification (see ccr-worker README)
+```
 
 ## Notifications Not Sending
 
