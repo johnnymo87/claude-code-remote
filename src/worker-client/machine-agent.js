@@ -24,6 +24,11 @@ class MachineAgent {
       return;
     }
 
+    if (!this.apiKey) {
+      logger.warn('CCR_API_KEY not set - machine agent disabled');
+      return;
+    }
+
     const wsUrl = this.workerUrl.replace(/^http/, 'ws') + `/ws?machineId=${encodeURIComponent(this.machineId)}`;
 
     logger.info(`Connecting to Worker: ${wsUrl}`);
@@ -32,9 +37,9 @@ class MachineAgent {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.on('open', () => {
-        logger.info(`Connected to Worker as ${this.machineId}`);
-        this.reconnectDelay = 1000; // Reset on successful connect
-        this.startPing();
+        logger.info(`WebSocket open, sending auth...`);
+        // Send auth message immediately - don't start ping until authSuccess
+        this.ws.send(JSON.stringify({ type: 'auth', apiKey: this.apiKey }));
       });
 
       this.ws.on('message', (data) => {
@@ -60,6 +65,13 @@ class MachineAgent {
   handleMessage(data) {
     try {
       const msg = JSON.parse(data);
+
+      if (msg.type === 'authSuccess') {
+        logger.info(`Authenticated as ${this.machineId}`);
+        this.reconnectDelay = 1000; // Reset on successful auth
+        this.startPing();
+        return;
+      }
 
       if (msg.type === 'pong') {
         return; // Ping response
