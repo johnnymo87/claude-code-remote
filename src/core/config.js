@@ -22,10 +22,6 @@ class ConfigManager {
     getDefaultConfig() {
         return {
             language: 'zh-CN',
-            sound: {
-                completed: 'Glass',
-                waiting: 'Tink'
-            },
             enabled: true,
             timeout: 5,
             customMessages: {
@@ -33,7 +29,7 @@ class ConfigManager {
                 waiting: null
             },
             channels: {
-                desktop: {
+                telegram: {
                     enabled: true,
                     priority: 1
                 }
@@ -51,49 +47,6 @@ class ConfigManager {
 
     getDefaultChannelsConfig() {
         return {
-            desktop: {
-                type: 'local',
-                enabled: true,
-                config: {}
-            },
-            email: {
-                type: 'email',
-                enabled: process.env.SMTP_USER ? true : false,
-                config: {
-                    smtp: {
-                        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-                        port: parseInt(process.env.SMTP_PORT) || 587,
-                        secure: process.env.SMTP_SECURE === 'true',
-                        auth: {
-                            user: process.env.SMTP_USER || '',
-                            pass: process.env.SMTP_PASS || ''
-                        }
-                    },
-                    imap: {
-                        host: process.env.IMAP_HOST || 'imap.gmail.com',
-                        port: parseInt(process.env.IMAP_PORT) || 993,
-                        secure: process.env.IMAP_SECURE !== 'false',
-                        auth: {
-                            user: process.env.IMAP_USER || process.env.SMTP_USER || '',
-                            pass: process.env.IMAP_PASS || process.env.SMTP_PASS || ''
-                        }
-                    },
-                    from: process.env.EMAIL_FROM || `${process.env.EMAIL_FROM_NAME || 'Claude Code Remote'} <${process.env.SMTP_USER}>`,
-                    to: process.env.EMAIL_TO || '',
-                    template: {
-                        checkInterval: parseInt(process.env.CHECK_INTERVAL) || 30
-                    }
-                }
-            },
-            discord: {
-                type: 'chat',
-                enabled: false,
-                config: {
-                    webhook: '',
-                    username: 'Claude-Code-Remote',
-                    avatar: null
-                }
-            },
             telegram: {
                 type: 'chat',
                 enabled: process.env.TELEGRAM_ENABLED === 'true',
