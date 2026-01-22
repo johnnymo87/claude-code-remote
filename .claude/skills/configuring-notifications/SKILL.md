@@ -1,13 +1,13 @@
 ---
 name: configuring-notifications
-description: Use when setting up Email, Telegram, or LINE notification channels, or when channels aren't working after setup
+description: Use when setting up Telegram notifications, or when notifications aren't working after setup
 ---
 
-# Configuring Notification Channels
+# Configuring Telegram Notifications
 
 ## Overview
 
-Claude Code Remote supports multiple notification channels. Configure one or more based on your preferences.
+Claude Code Remote sends notifications via Telegram and supports reply-to-command functionality.
 
 ## Interactive Setup (Recommended)
 
@@ -16,7 +16,7 @@ npm run setup
 ```
 
 This wizard:
-- Guides you through each channel's configuration
+- Guides you through Telegram configuration
 - Creates/updates your `.env` file
 - Merges hooks into `~/.claude/settings.json`
 
@@ -97,42 +97,10 @@ TELEGRAM_WEBHOOK_PATH_SECRET=your-16-byte-hex-secret
 
 The webhook URL is set automatically on server start.
 
-## Email Setup
-
-**Step 1: Get app password** (Gmail)
-- Go to [Google App Passwords](https://myaccount.google.com/apppasswords)
-- Generate password for "Mail"
-
-**Step 2: Configure .env**
-```env
-EMAIL_ENABLED=true
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-IMAP_USER=your-email@gmail.com
-IMAP_PASS=your-app-password
-EMAIL_TO=notification-recipient@gmail.com
-ALLOWED_SENDERS=notification-recipient@gmail.com
-```
-
-## LINE Setup
-
-**Step 1: Create LINE channel**
-1. Go to [LINE Developers Console](https://developers.line.biz/)
-2. Create a Messaging API channel
-3. Note the Channel Access Token and Channel Secret
-
-**Step 2: Configure .env**
-```env
-LINE_ENABLED=true
-LINE_CHANNEL_ACCESS_TOKEN=your-token
-LINE_CHANNEL_SECRET=your-secret
-LINE_USER_ID=your-user-id
-```
-
 ## Verify Configuration
 
 ```bash
-# Test all enabled channels
+# Test notification
 node claude-hook-notify.js completed
 
 # Check Worker connection (if using Worker routing)
@@ -141,7 +109,7 @@ journalctl -u ccr-webhooks -f  # or check console output
 
 ## Common Issues
 
-### Telegram: Commands not reaching Claude
+### Commands not reaching Claude
 
 **With Worker routing:**
 ```bash
@@ -159,15 +127,11 @@ curl https://ccr-router.your-account.workers.dev/sessions
 curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 ```
 
-### Telegram: Wrong machine receives command
+### Wrong machine receives command
 
 Ensure each machine has a unique `CCR_MACHINE_ID` in `.env`.
 
-### Email: Not receiving
-- Check spam folder
-- Verify app password (not regular password) for Gmail
-
-### IPv6 connectivity issues (Telegram)
+### IPv6 connectivity issues
 ```env
 TELEGRAM_FORCE_IPV4=true
 ```

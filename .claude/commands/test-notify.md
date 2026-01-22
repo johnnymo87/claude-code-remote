@@ -1,11 +1,11 @@
 ---
-description: Test all enabled notification channels
+description: Test Telegram notifications
 allowed-tools: Bash(node:*)
 ---
 
 # Test Notifications
 
-Send a test notification to all enabled channels (Telegram, Email, LINE, Desktop).
+Send a test notification to Telegram.
 
 ## When to Use
 
@@ -20,20 +20,14 @@ Send a test notification to all enabled channels (Telegram, Email, LINE, Desktop
    node claude-hook-notify.js completed
    ```
 
-2. **Check output** for errors per channel
+2. **Check output** for errors
 
-3. **Verify receipt**:
-   - Telegram: Check bot chat
-   - Email: Check inbox (and spam)
-   - LINE: Check LINE app
-   - Desktop: Listen for sound/notification
+3. **Verify receipt**: Check your Telegram bot chat
 
 ## Expected Output
 
 ```
-[Desktop] Notification sent
 [Telegram] Message sent successfully
-[Email] Notification sent to user@example.com
 ```
 
-If a channel shows an error, see the `troubleshooting` skill.
+If it shows an error, see the `troubleshooting` skill.

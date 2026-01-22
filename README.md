@@ -1,10 +1,10 @@
 # Claude Code Remote
 
-Control [Claude Code](https://claude.ai/code) remotely via Telegram, Email, LINE, or Desktop notifications.
+Control [Claude Code](https://claude.ai/code) remotely via Telegram notifications.
 
 | | |
 |---|---|
-| **Platforms** | Telegram, Email, LINE, Desktop |
+| **Platform** | Telegram |
 | **Multi-machine** | Cloudflare Worker routing |
 | **Node.js** | 22 (via devenv) |
 

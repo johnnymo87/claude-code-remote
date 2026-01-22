@@ -100,7 +100,6 @@ Requires tunnel (Cloudflare Tunnel, ngrok) exposing port 4731.
 
 ```
 ├── claude-hook-notify.js      # Hook script (called by Claude)
-├── start-all-webhooks.js      # Multi-channel webhook server
 ├── start-telegram-webhook.js  # Telegram webhook + machine agent
 │
 ├── src/
@@ -108,11 +107,8 @@ Requires tunnel (Cloudflare Tunnel, ngrok) exposing port 4731.
 │   │   └── machine-agent.js   # WebSocket client for Worker
 │   │
 │   ├── channels/              # Notification handlers
-│   │   ├── telegram/          # Telegram bot integration
-│   │   │   └── webhook.js     # Webhook handler + Worker routing
-│   │   ├── email/             # SMTP/IMAP handling
-│   │   ├── line/              # LINE Messaging API
-│   │   └── desktop/           # System notifications
+│   │   └── telegram/          # Telegram bot integration
+│   │       └── webhook.js     # Webhook handler + Worker routing
 │   │
 │   ├── relay/                 # Command injection
 │   │   └── injector-registry.js  # nvim/tmux injection
