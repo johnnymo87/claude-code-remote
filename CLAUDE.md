@@ -1,4 +1,4 @@
-# CLAUDE.md - Claude Code Remote
+# Claude Code Remote
 
 Control Claude Code remotely via Telegram, Email, LINE, or Desktop notifications.
 
@@ -7,22 +7,47 @@ Control Claude Code remotely via Telegram, Email, LINE, or Desktop notifications
 ```bash
 npm install
 npm run setup        # Configure channels, set up hooks
-npm run webhooks:log # Start services (logs to ~/.local/state/claude-code-remote/daemon.log)
-
-# For Telegram replies, expose port 4731 via tunnel (ngrok, cloudflared, etc.)
-# The WEBHOOK_DOMAIN env var should match your tunnel's public hostname
+npm run webhooks:log # Start services
 ```
+
+**For Telegram replies**, choose one:
+- **Multi-machine**: Configure `CCR_WORKER_URL` and `CCR_MACHINE_ID` (see configuring-notifications skill)
+- **Single-machine**: Expose port 4731 via tunnel, set `WEBHOOK_DOMAIN`
+
+## How It Works
+
+1. Claude completes a task → Stop hook fires
+2. Notification sent to your phone/email
+3. You reply with a command
+4. Command injected into Claude session
+
+For multi-machine setups, a Cloudflare Worker routes replies to the correct machine.
+
+## Documentation
+
+| Skill | Description |
+|-------|-------------|
+| [architecture](.claude/skills/architecture/SKILL.md) | System design, notification flow, project structure |
+| [configuring-notifications](.claude/skills/configuring-notifications/SKILL.md) | Setting up Telegram, Email, LINE (Worker vs Direct mode) |
+| [troubleshooting](.claude/skills/troubleshooting/SKILL.md) | Worker issues, notifications not sending, commands failing |
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| [`/test-notify`](.claude/commands/test-notify.md) | Test all enabled notification channels |
+| [/test-notify](.claude/commands/test-notify.md) | Test all enabled notification channels |
 
-## Skills
+## Key Environment Variables
 
-| Skill | When to use |
-|-------|-------------|
-| [`architecture`](.claude/skills/architecture/SKILL.md) | Understanding how it works, project structure |
-| [`configuring-notifications`](.claude/skills/configuring-notifications/SKILL.md) | Setting up Email, Telegram, or LINE channels |
-| [`troubleshooting`](.claude/skills/troubleshooting/SKILL.md) | Notifications not working, commands not executing |
+```bash
+# Telegram (required for Telegram channel)
+TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
+
+# Worker routing (multi-machine)
+CCR_WORKER_URL=https://ccr-router.your-account.workers.dev
+CCR_MACHINE_ID=devbox
+
+# Direct mode (single-machine, alternative to Worker)
+WEBHOOK_DOMAIN=ccr.yourdomain.com
+```

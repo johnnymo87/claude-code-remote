@@ -7,9 +7,48 @@ description: Use when you need to understand how Claude Code Remote works, the n
 
 ## Overview
 
-Claude Code Remote is a notification relay system that bridges Claude Code sessions with external messaging platforms.
+Claude Code Remote is a notification relay system that bridges Claude Code sessions with external messaging platforms. It supports two modes:
 
-## How It Works
+1. **Worker Routing** (recommended for multi-machine): Cloudflare Worker handles webhooks and routes commands to correct machine
+2. **Direct Mode** (single machine): Webhooks received directly via tunnel
+
+## Multi-Machine Architecture (Worker Routing)
+
+```
+┌─────────────────┐     ┌─────────────────┐
+│ macOS (work)    │     │ devbox (side)   │
+│                 │     │                 │
+│ Claude sessions │     │ Claude sessions │
+│ CCR webhook srv │     │ CCR webhook srv │
+│ Machine Agent ──┼─────┼── Machine Agent │
+│   (WebSocket)   │     │   (WebSocket)   │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         │  outbound WebSocket   │
+         └───────────┬───────────┘
+                     │
+         ┌───────────▼───────────┐
+         │ Cloudflare Worker     │
+         │ + Durable Object      │
+         │                       │
+         │ - Session registry    │
+         │ - Message→Session map │
+         │ - Command routing     │
+         │ - WebSocket hub       │
+         └───────────┬───────────┘
+                     │
+         ┌───────────▼───────────┐
+         │ Telegram Bot API      │
+         │ (webhook endpoint)    │
+         └───────────────────────┘
+```
+
+**Key Components:**
+- **Machine Agent**: Maintains WebSocket connection to Worker, receives commands
+- **Worker**: Routes Telegram webhooks to correct machine based on session registry
+- **Session Registry**: Maps session IDs to machine IDs (stored in Durable Objects SQLite)
+
+## Single-Machine Architecture (Direct Mode)
 
 ```
 ┌─────────────────────┐         ┌──────────────────────────┐
@@ -21,64 +60,74 @@ Claude Code Remote is a notification relay system that bridges Claude Code sessi
 └─────────────────────┘         └──────────────────────────┘
 ```
 
+Requires tunnel (Cloudflare Tunnel, ngrok) exposing port 4731.
+
 ## Notification Flow
 
+### With Worker Routing (Multi-Machine)
+
 1. **Claude completes task** → Stop hook fires
-2. **Hook script runs** → `claude-hook-notify.js completed`
-3. **Notifications sent** → Telegram, Email, LINE, Desktop (based on `.env`)
-4. **You reply** → Via Telegram bot, email reply, or LINE message
-5. **Webhook receives** → `start-all-webhooks.js` handles incoming
-6. **Command injected** → Into active Claude session (PTY or tmux mode)
+2. **CCR sends notification** → Via Worker's `/notifications/send` endpoint
+3. **Worker sends to Telegram** → Stores message_id → session mapping
+4. **You reply** → Telegram webhook hits Worker
+5. **Worker routes command** → Pushes to correct machine via WebSocket
+6. **Machine agent receives** → Injects into local Claude session
+
+### Direct Mode (Single Machine)
+
+1. **Claude completes task** → Stop hook fires
+2. **Notifications sent** → Direct to Telegram API
+3. **You reply** → Webhook received at CCR
+4. **Command injected** → Into active Claude session
 
 ## Injection Modes
 
-**PTY Mode** (default, `INJECTION_MODE=pty`):
+**nvim RPC** (preferred when in nvim terminal):
+- Injects via Neovim's RPC socket
+- Cleanest integration for nvim users
+- Falls back to tmux if socket unavailable
+
+**tmux Mode**:
+- Injects via tmux send-keys
+- Works with remote/persistent sessions
+- Uses pane ID for stable targeting
+
+**PTY Mode** (legacy):
 - Direct injection via pseudo-terminal
 - No tmux required
-- Works with local Claude sessions
-
-**tmux Mode** (`INJECTION_MODE=tmux`):
-- Injects into tmux session
-- Requires active tmux session with Claude running
-- Better for remote/persistent sessions
 
 ## Project Structure
 
 ```
-├── claude-remote.js           # Main CLI daemon
 ├── claude-hook-notify.js      # Hook script (called by Claude)
 ├── start-all-webhooks.js      # Multi-channel webhook server
-├── start-telegram-webhook.js  # Telegram-only webhook
-├── start-line-webhook.js      # LINE-only webhook
+├── start-telegram-webhook.js  # Telegram webhook + machine agent
 │
 ├── src/
+│   ├── worker-client/         # Cloudflare Worker integration
+│   │   └── machine-agent.js   # WebSocket client for Worker
+│   │
 │   ├── channels/              # Notification handlers
 │   │   ├── telegram/          # Telegram bot integration
+│   │   │   └── webhook.js     # Webhook handler + Worker routing
 │   │   ├── email/             # SMTP/IMAP handling
 │   │   ├── line/              # LINE Messaging API
 │   │   └── desktop/           # System notifications
 │   │
 │   ├── relay/                 # Command injection
-│   │   ├── pty-relay.js       # PTY mode injection
-│   │   └── tmux-relay.js      # tmux mode injection
+│   │   └── injector-registry.js  # nvim/tmux injection
 │   │
 │   ├── registry/              # Session management
 │   │   └── session-registry.js
 │   │
+│   ├── routes/                # HTTP endpoints
+│   │   └── events.js          # Claude hook events
+│   │
 │   ├── storage/               # Data persistence
-│   │   └── message-tokens.js  # SQLite token storage
+│   │   └── message-token-store.js  # SQLite token storage
 │   │
-│   ├── core/                  # Core utilities
-│   │   ├── config.js          # Configuration loading
-│   │   └── logger.js          # Pino logging
-│   │
-│   └── utils/                 # Helpers
-│       ├── conversation-tracker.js
-│       └── tmux-utils.js
-│
-├── config/                    # Channel configuration
-│   ├── default.json
-│   └── channels.json
+│   └── core/                  # Core utilities
+│       └── logger.js
 │
 └── .claude/                   # Claude Code integration
     ├── commands/              # Slash commands
@@ -89,40 +138,34 @@ Claude Code Remote is a notification relay system that bridges Claude Code sessi
 
 | File | Purpose |
 |------|---------|
-| `claude-hook-notify.js` | Called by Claude hooks, sends notifications |
-| `start-all-webhooks.js` | Receives replies, injects commands |
-| `claude-remote.js` | CLI for daemon management |
-| `setup.js` | Interactive configuration wizard |
+| `start-telegram-webhook.js` | Main entry point, initializes machine agent |
+| `src/worker-client/machine-agent.js` | WebSocket client for Worker routing |
+| `src/channels/telegram/webhook.js` | Telegram webhook handling, Worker integration |
+| `src/routes/events.js` | HTTP endpoints for Claude hooks |
 
-## Data Flow
+## Environment Variables
 
+### Worker Routing (Multi-Machine)
+
+```bash
+# Cloudflare Worker URL
+CCR_WORKER_URL=https://ccr-router.your-account.workers.dev
+
+# Unique machine identifier
+CCR_MACHINE_ID=devbox  # or 'macbook'
 ```
-Claude Session
-    │
-    ▼ (Stop hook)
-claude-hook-notify.js
-    │
-    ├──▶ Telegram API
-    ├──▶ SMTP Server
-    ├──▶ LINE API
-    └──▶ Desktop Notification
 
-User Reply
-    │
-    ▼ (Webhook)
-start-all-webhooks.js
-    │
-    ▼ (Injection)
-relay/pty-relay.js or relay/tmux-relay.js
-    │
-    ▼
-Claude Session
+### Direct Mode (Single Machine)
+
+```bash
+# Tunnel public hostname (omit for Worker routing)
+WEBHOOK_DOMAIN=ccr.yourdomain.com
 ```
 
 ## Session Tokens
 
-- 8-character alphanumeric tokens
-- Map message → Claude session
+- Base64url tokens (22 characters)
+- Map notification message → Claude session
 - Stored in SQLite (`src/data/message-tokens.db`)
 - Expire after 24 hours
 - Enable reply-to-command functionality
@@ -134,16 +177,9 @@ Claude Session
 direnv allow
 node --version  # Should show v22.x
 
-# Expose port 4731 via tunnel (ngrok, cloudflared, etc.)
-# The WEBHOOK_DOMAIN env var should match your tunnel's public hostname
+# Start webhook server (connects to Worker if CCR_WORKER_URL set)
+npm run webhooks:log
 
-# Start individual services
-npm run telegram      # Telegram webhook only
-npm run line          # LINE webhook only
-npm run daemon:start  # Email daemon only
-npm run webhooks      # All enabled webhooks
-npm run webhooks:log  # All webhooks + log to ~/.local/state/claude-code-remote/daemon.log
-
-# Test notifications
-node claude-hook-notify.js completed
+# Check Worker connection in logs:
+# [MachineAgent] [INFO] Connected to Worker as devbox
 ```

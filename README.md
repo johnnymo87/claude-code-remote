@@ -5,8 +5,10 @@ Control [Claude Code](https://claude.ai/code) remotely via Telegram, Email, LINE
 | | |
 |---|---|
 | **Platforms** | Telegram, Email, LINE, Desktop |
+| **Multi-machine** | Cloudflare Worker routing |
 | **Node.js** | 22 (via devenv) |
-| **Docs** | [CLAUDE.md](CLAUDE.md) |
+
+**See [CLAUDE.md](CLAUDE.md) for setup and documentation.**
 
 <div align="center">
   <a href="https://youtu.be/_yrNlDYOJhw">

@@ -9,18 +9,74 @@ description: Use when notifications aren't being sent, commands aren't executing
 
 Common issues and their solutions for notification and command injection problems.
 
+## Worker Routing Issues
+
+### Machine agent not connecting
+
+```bash
+# Check logs for connection status
+npm run webhooks:log
+# Look for: [MachineAgent] [INFO] Connected to Worker as <machine-id>
+# Or errors: [MachineAgent] [ERROR] WebSocket error: ...
+```
+
+**If not connecting:**
+1. Verify `CCR_WORKER_URL` in `.env` is correct
+2. Check Worker is deployed: `curl https://your-worker.workers.dev/sessions`
+3. Ensure outbound WebSocket connections allowed (corporate firewalls)
+
+### Commands going to wrong machine
+
+Each machine needs unique `CCR_MACHINE_ID`:
+```bash
+# On devbox
+CCR_MACHINE_ID=devbox
+
+# On macOS
+CCR_MACHINE_ID=macbook
+```
+
+Check registered sessions:
+```bash
+curl https://ccr-router.your-account.workers.dev/sessions
+```
+
+### Notifications sent but no reply routing
+
+1. **Check session registered with Worker:**
+   ```bash
+   # After enabling notifications, check Worker sessions
+   curl https://ccr-router.your-account.workers.dev/sessions | jq
+   ```
+
+2. **Verify webhook points to Worker:**
+   ```bash
+   curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq '.result.url'
+   # Should show Worker URL, not direct tunnel URL
+   ```
+
+### Worker returning errors
+
+Check Worker logs in Cloudflare dashboard:
+1. Go to Workers & Pages
+2. Select ccr-router
+3. View Logs tab
+
+Common issues:
+- Missing secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET)
+- Durable Object not created (check migrations in wrangler.toml)
+
 ## Notifications Not Sending
 
 ### Check hooks are configured
 
 ```bash
-# View Claude settings
 cat ~/.claude/settings.json | jq '.hooks'
 ```
 
 Should show `Stop` and `SubagentStop` hooks pointing to `claude-hook-notify.js`.
 
-If missing, run:
+If missing:
 ```bash
 npm run setup
 ```
@@ -42,40 +98,34 @@ If this works but Claude isn't triggering notifications:
 # Test bot token
 curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe"
 
-# Check webhook
-curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
-```
-
-**Email:**
-```bash
-node claude-remote.js test
+# Check webhook (should point to Worker or your tunnel)
+curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq
 ```
 
 ## Commands Not Executing
 
 ### Check injection mode
 
+The system auto-detects injection method based on session transport:
+1. **nvim RPC** - Preferred when Claude is in nvim terminal
+2. **tmux** - Fallback when nvim socket unavailable
+3. **PTY** - Legacy mode for local sessions
+
+### Verify session is registered
+
 ```bash
-grep INJECTION_MODE .env
+curl http://localhost:4731/sessions | jq
 ```
 
-- `pty` (default): Works without tmux, injects directly
-- `tmux`: Requires active tmux session
+Sessions must have `notify: true` to receive commands.
 
-### For tmux mode
-
-```bash
-# List sessions
-tmux list-sessions
-
-# Verify Claude is in expected session
-tmux list-windows -t claude-session
-```
-
-### Test injection
+### Test injection locally
 
 ```bash
-node test-injection.js
+# Check CCR can reach the session
+curl -X POST http://localhost:4731/tokens/validate \
+  -H "Content-Type: application/json" \
+  -d '{"token": "YOUR_TOKEN", "chat_id": "YOUR_CHAT_ID"}'
 ```
 
 ## Services Won't Start
@@ -83,10 +133,7 @@ node test-injection.js
 ### Port already in use
 
 ```bash
-# Find process on port 3000
-lsof -i :3000
-
-# Kill if needed
+lsof -i :4731
 kill -9 <PID>
 ```
 
@@ -96,14 +143,12 @@ kill -9 <PID>
 npm install
 ```
 
-### Environment not loaded
+### Logger import error
 
+If you see `createLogger is not a function`:
 ```bash
-# Check .env exists
-ls -la .env
-
-# Check devenv is active
-node --version  # Should be v22.x
+git pull origin master  # Get the fix
+npm run webhooks:log
 ```
 
 ## Debug Mode
@@ -111,25 +156,37 @@ node --version  # Should be v22.x
 Enable verbose logging:
 
 ```bash
-LOG_LEVEL=debug npm run webhooks:log  # Logs to ~/.local/state/claude-code-remote/daemon.log
-DEBUG=true node claude-hook-notify.js completed
+LOG_LEVEL=debug npm run webhooks:log
 ```
+
+Log location: `~/.local/state/claude-code-remote/daemon.log`
 
 ## Session Token Issues
 
 ### Token expired or invalid
 
-Tokens expire after 24 hours. Check token storage:
-
+Tokens expire after 24 hours. Check if session exists:
 ```bash
-ls -la src/data/
+curl http://localhost:4731/sessions | jq
 ```
 
 ### Clear stale sessions
 
 ```bash
-rm src/data/session-map.json
-rm src/data/claude-sessions.json
+rm src/data/sessions.db
 ```
 
 Then restart services.
+
+## Systemd Service Issues (Linux)
+
+```bash
+# Check status
+sudo systemctl status ccr-webhooks
+
+# View logs
+journalctl -u ccr-webhooks -f
+
+# Restart after config changes
+sudo systemctl restart ccr-webhooks
+```
