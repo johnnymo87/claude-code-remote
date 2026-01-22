@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Multi-Platform Webhook Server
- * Starts all enabled webhook servers (Telegram, LINE) in parallel
+ * Telegram Webhook Server
+ * Starts the Telegram webhook server for Claude Code Remote
  */
 
 const { spawn } = require('child_process');
@@ -16,93 +16,38 @@ if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath });
 }
 
-console.log('🚀 Starting Claude Code Remote Multi-Platform Webhook Server...\n');
+console.log('Starting Claude Code Remote Telegram Webhook Server...\n');
 
-const processes = [];
-
-// Start Telegram webhook if enabled
-if (process.env.TELEGRAM_ENABLED === 'true' && process.env.TELEGRAM_BOT_TOKEN) {
-    console.log('📱 Starting Telegram webhook server...');
-    const telegramProcess = spawn('node', ['start-telegram-webhook.js'], {
-        stdio: ['inherit', 'inherit', 'inherit'],
-        env: process.env
-    });
-    
-    telegramProcess.on('exit', (code) => {
-        console.log(`📱 Telegram webhook server exited with code ${code}`);
-    });
-    
-    processes.push({ name: 'Telegram', process: telegramProcess });
-}
-
-// Start LINE webhook if enabled
-if (process.env.LINE_ENABLED === 'true' && process.env.LINE_CHANNEL_ACCESS_TOKEN) {
-    console.log('📱 Starting LINE webhook server...');
-    const lineProcess = spawn('node', ['start-line-webhook.js'], {
-        stdio: ['inherit', 'inherit', 'inherit'],
-        env: process.env
-    });
-    
-    lineProcess.on('exit', (code) => {
-        console.log(`📱 LINE webhook server exited with code ${code}`);
-    });
-    
-    processes.push({ name: 'LINE', process: lineProcess });
-}
-
-// Start Email daemon if enabled
-if (process.env.EMAIL_ENABLED === 'true' && process.env.SMTP_USER) {
-    console.log('📧 Starting email daemon...');
-    const emailProcess = spawn('node', ['claude-remote.js', 'daemon', 'start'], {
-        stdio: ['inherit', 'inherit', 'inherit'],
-        env: process.env
-    });
-    
-    emailProcess.on('exit', (code) => {
-        console.log(`📧 Email daemon exited with code ${code}`);
-    });
-    
-    processes.push({ name: 'Email', process: emailProcess });
-}
-
-if (processes.length === 0) {
-    console.log('❌ No platforms enabled. Please configure at least one platform in .env file:');
-    console.log('   - Set TELEGRAM_ENABLED=true and configure TELEGRAM_BOT_TOKEN');
-    console.log('   - Set LINE_ENABLED=true and configure LINE_CHANNEL_ACCESS_TOKEN');
-    console.log('   - Set EMAIL_ENABLED=true and configure SMTP_USER');
-    console.log('\n   Tip: run `npm run setup` for an interactive configuration wizard.');
+// Verify Telegram is configured
+if (!process.env.TELEGRAM_BOT_TOKEN) {
+    console.log('Telegram bot token not configured.');
+    console.log('Please configure TELEGRAM_BOT_TOKEN in .env file.');
+    console.log('\nTip: run `npm run setup` for an interactive configuration wizard.');
     process.exit(1);
 }
 
-console.log(`\n✅ Started ${processes.length} webhook server(s):`);
-processes.forEach(p => {
-    console.log(`   - ${p.name}`);
+console.log('Starting Telegram webhook server...');
+const telegramProcess = spawn('node', ['start-telegram-webhook.js'], {
+    stdio: ['inherit', 'inherit', 'inherit'],
+    env: process.env
 });
 
-console.log('\n📋 Platform Command Formats:');
-if (process.env.TELEGRAM_ENABLED === 'true') {
-    console.log('   Telegram: /cmd TOKEN123 <command>');
-}
-if (process.env.LINE_ENABLED === 'true') {
-    console.log('   LINE: Token TOKEN123 <command>');
-}
-if (process.env.EMAIL_ENABLED === 'true') {
-    console.log('   Email: Reply to notification emails');
-}
+telegramProcess.on('exit', (code) => {
+    console.log(`Telegram webhook server exited with code ${code}`);
+    process.exit(code);
+});
 
-console.log('\n🔧 To stop all services, press Ctrl+C\n');
+console.log('\nTelegram webhook server started.');
+console.log('\nCommand format: /cmd TOKEN123 <command>');
+console.log('\nTo stop the service, press Ctrl+C\n');
 
 // Handle graceful shutdown
 function shutdown() {
-    console.log('\n🛑 Shutting down all webhook servers...');
-    
-    processes.forEach(p => {
-        console.log(`   Stopping ${p.name}...`);
-        p.process.kill('SIGTERM');
-    });
-    
+    console.log('\nShutting down webhook server...');
+    telegramProcess.kill('SIGTERM');
+
     setTimeout(() => {
-        console.log('✅ All services stopped');
+        console.log('Service stopped');
         process.exit(0);
     }, 2000);
 }
