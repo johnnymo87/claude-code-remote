@@ -40,6 +40,17 @@ class TelegramWebhookHandler {
 
         this._setupMiddleware();
         this._setupRoutes();
+
+        // Machine agent for Worker communication (set externally)
+        this.machineAgent = null;
+    }
+
+    /**
+     * Set the machine agent for Worker communication
+     * @param {MachineAgent} agent - The machine agent instance
+     */
+    setMachineAgent(agent) {
+        this.machineAgent = agent;
     }
 
     _setupMiddleware() {
@@ -62,6 +73,7 @@ class TelegramWebhookHandler {
             registry: this.registry,
             logger: this.logger,
             onStop: this._handleStopEvent.bind(this),
+            onNotifyEnabled: this._handleNotifyEnabled.bind(this),
         });
         this.app.use(eventRoutes);
     }
@@ -119,6 +131,27 @@ class TelegramWebhookHandler {
             ],
         };
 
+        // If machine agent is configured, send via Worker for reply routing
+        if (this.machineAgent && process.env.CCR_WORKER_URL) {
+            try {
+                const result = await this.machineAgent.sendNotification(
+                    session.session_id,
+                    chatId,
+                    message,
+                    keyboard
+                );
+
+                if (result.ok) {
+                    this.logger.info(`Notification sent via Worker: ${result.messageId} for session ${session.session_id}`);
+                    return { token };
+                }
+                this.logger.warn(`Worker notification returned not ok, falling back to direct: ${JSON.stringify(result)}`);
+            } catch (err) {
+                this.logger.warn(`Worker notification failed, falling back to direct: ${err.message}`);
+            }
+        }
+
+        // Fall back to direct Telegram API
         const response = await this._sendMessage(chatId, message, {
             parse_mode: 'Markdown',
             reply_markup: keyboard,
@@ -134,6 +167,24 @@ class TelegramWebhookHandler {
         }
 
         return { token };
+    }
+
+    /**
+     * Handle notifications being enabled for a session
+     * Registers the session with the Worker if machine agent is configured
+     *
+     * @param {object} params
+     * @param {object} params.session - Session record
+     */
+    async _handleNotifyEnabled({ session }) {
+        if (this.machineAgent && process.env.CCR_WORKER_URL) {
+            try {
+                await this.machineAgent.registerSession(session.session_id, session.label);
+                this.logger.info(`Session registered with Worker: ${session.session_id}`);
+            } catch (err) {
+                this.logger.warn(`Failed to register session with Worker: ${err.message}`);
+            }
+        }
     }
 
     /**
@@ -309,6 +360,30 @@ class TelegramWebhookHandler {
             await this._sendMessage(chatId,
                 `❌ *Command execution failed:* ${error.message}`,
                 { parse_mode: 'Markdown' });
+        }
+    }
+
+    /**
+     * Process command internally (for Worker commands, bypasses token validation)
+     * @param {string} chatId - Chat ID for error reporting
+     * @param {string} sessionId - Session ID to send command to
+     * @param {string} command - Command to inject
+     * @returns {Promise<{ok: boolean, error?: string}>}
+     */
+    async _processCommandInternal(chatId, sessionId, command) {
+        const session = this.registry.getSession(sessionId);
+
+        if (!session) {
+            return { ok: false, error: 'Session not found' };
+        }
+
+        try {
+            await this._injectToSession(session, command);
+            this.logger.info(`Worker command injected - Session: ${sessionId}, Command: ${command}`);
+            return { ok: true };
+        } catch (err) {
+            this.logger.error(`Worker command injection failed: ${err.message}`);
+            return { ok: false, error: err.message };
         }
     }
 

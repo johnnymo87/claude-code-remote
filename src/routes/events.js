@@ -17,7 +17,7 @@ const express = require('express');
  * @returns {express.Router}
  */
 function createEventRoutes(options) {
-    const { registry, logger, onStop } = options;
+    const { registry, logger, onStop, onNotifyEnabled } = options;
     const router = express.Router();
 
     /**
@@ -156,6 +156,14 @@ function createEventRoutes(options) {
 
             logger.info?.(`Notifications enabled for: ${session_id} (${label})`) ||
                 logger.log?.(`Notifications enabled for: ${session_id} (${label})`);
+
+            // Notify callback for Worker registration
+            if (onNotifyEnabled) {
+                onNotifyEnabled({ session }).catch((err) => {
+                    logger.error?.(`onNotifyEnabled callback failed: ${err.message}`) ||
+                        logger.log?.(`onNotifyEnabled callback failed: ${err.message}`);
+                });
+            }
 
             res.json({ ok: true, session });
         } catch (error) {
