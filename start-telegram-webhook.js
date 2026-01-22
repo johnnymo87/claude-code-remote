@@ -10,6 +10,7 @@ const fs = require('fs');
 const dotenv = require('dotenv');
 const Logger = require('./src/core/logger');
 const TelegramWebhookHandler = require('./src/channels/telegram/webhook');
+const MachineAgent = require('./src/worker-client/machine-agent');
 
 // Load environment variables
 const envPath = path.join(__dirname, '.env');
@@ -51,6 +52,27 @@ if (!config.webhookSecret) {
 // Create and start webhook handler
 const webhookHandler = new TelegramWebhookHandler(config);
 
+// Initialize machine agent for Worker communication
+const machineAgent = new MachineAgent({
+    onCommand: async (msg) => {
+        // Route command to local session
+        try {
+            const result = await webhookHandler._processCommandInternal(
+                msg.chatId,
+                msg.sessionId,
+                msg.command
+            );
+            machineAgent.sendResult(msg.sessionId, result.ok, result.error, msg.chatId);
+        } catch (err) {
+            logger.error('Error processing Worker command:', err);
+            machineAgent.sendResult(msg.sessionId, false, err.message, msg.chatId);
+        }
+    }
+});
+
+// Make agent available to webhook handler
+webhookHandler.setMachineAgent(machineAgent);
+
 async function start() {
     logger.info('Starting Telegram webhook server...');
     logger.info(`Configuration:`);
@@ -61,6 +83,11 @@ async function start() {
     logger.info(`- Webhook Secret: ${config.webhookSecret ? 'Configured' : 'NOT SET (insecure)'}`);
     logger.info(`- Webhook Path Secret: ${config.webhookPathSecret ? 'Configured' : 'Not set (using default path)'}`);
     logger.info(`- Drop Pending Updates: ${config.dropPendingUpdates ? 'Yes' : 'No'}`);
+    logger.info(`- Worker URL: ${process.env.CCR_WORKER_URL || 'Not configured'}`);
+    logger.info(`- Machine ID: ${process.env.CCR_MACHINE_ID || require('os').hostname()}`);
+
+    // Connect to Worker (if configured)
+    machineAgent.connect();
 
     // Set webhook if URL is provided
     if (config.webhookUrl) {
@@ -108,10 +135,12 @@ start();
 // Handle graceful shutdown
 process.on('SIGINT', () => {
     logger.info('Shutting down Telegram webhook server...');
+    machineAgent.close();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     logger.info('Shutting down Telegram webhook server...');
+    machineAgent.close();
     process.exit(0);
 });
