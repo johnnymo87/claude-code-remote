@@ -9,6 +9,7 @@ class MachineAgent {
   constructor(options = {}) {
     this.workerUrl = options.workerUrl || process.env.CCR_WORKER_URL;
     this.machineId = options.machineId || process.env.CCR_MACHINE_ID || os.hostname();
+    this.apiKey = options.apiKey || process.env.CCR_API_KEY;
     this.onCommand = options.onCommand || (() => {});
 
     this.ws = null;
@@ -114,9 +115,14 @@ class MachineAgent {
     if (!this.workerUrl) return;
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (this.apiKey) {
+        headers['Authorization'] = `Bearer ${this.apiKey}`;
+      }
+
       const response = await fetch(`${this.workerUrl}/sessions/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           sessionId,
           machineId: this.machineId,
@@ -136,9 +142,14 @@ class MachineAgent {
     if (!this.workerUrl) return;
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (this.apiKey) {
+        headers['Authorization'] = `Bearer ${this.apiKey}`;
+      }
+
       await fetch(`${this.workerUrl}/sessions/unregister`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ sessionId })
       });
       logger.info(`Session unregistered from Worker: ${sessionId}`);
@@ -152,9 +163,14 @@ class MachineAgent {
       throw new Error('CCR_WORKER_URL not configured');
     }
 
+    const headers = { 'Content-Type': 'application/json' };
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+
     const response = await fetch(`${this.workerUrl}/notifications/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         sessionId,
         chatId,
