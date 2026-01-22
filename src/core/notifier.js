@@ -31,43 +31,14 @@ class Notifier {
      */
     async initializeChannels() {
         this.logger.debug('Initializing channels...');
-        
-        // Load desktop channel
-        const DesktopChannel = require('../channels/local/desktop');
-        const desktopConfig = this.config.getChannel('desktop');
-        if (desktopConfig && desktopConfig.enabled) {
-            const desktop = new DesktopChannel(desktopConfig.config || {});
-            desktop.config.completedSound = this.config.get('sound.completed');
-            desktop.config.waitingSound = this.config.get('sound.waiting');
-            this.registerChannel('desktop', desktop);
-        }
 
-        // Load email channel
-        const EmailChannel = require('../channels/email/smtp');
-        const emailConfig = this.config.getChannel('email');
-        if (emailConfig && emailConfig.enabled) {
-            const email = new EmailChannel(emailConfig.config || {});
-            this.registerChannel('email', email);
-        }
-
-        // Load LINE channel
-        const LINEChannel = require('../channels/line/line');
-        const lineConfig = this.config.getChannel('line');
-        if (lineConfig && lineConfig.enabled) {
-            const line = new LINEChannel(lineConfig.config || {});
-            this.registerChannel('line', line);
-        }
-
-        // Load Telegram channel
+        // Load Telegram channel (only supported channel for Cloudflare Worker routing)
         const TelegramChannel = require('../channels/telegram/telegram');
         const telegramConfig = this.config.getChannel('telegram');
         if (telegramConfig && telegramConfig.enabled) {
             const telegram = new TelegramChannel(telegramConfig.config || {});
             this.registerChannel('telegram', telegram);
         }
-
-        // ✅ Telegram integration completed
-        // TODO: Future channels - Discord, Slack, Teams, etc.
 
         this.logger.info(`Initialized ${this.channels.size} channels`);
     }
