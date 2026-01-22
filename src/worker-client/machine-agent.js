@@ -1,9 +1,9 @@
 // src/worker-client/machine-agent.js
 const WebSocket = require('ws');
 const os = require('os');
-const { createLogger } = require('../core/logger');
+const Logger = require('../core/logger');
 
-const logger = createLogger('MachineAgent');
+const logger = new Logger('MachineAgent');
 
 class MachineAgent {
   constructor(options = {}) {
