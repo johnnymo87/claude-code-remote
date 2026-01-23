@@ -74,6 +74,12 @@ class MachineAgent {
 
       if (msg.type === 'command') {
         logger.info(`Received command for session ${msg.sessionId}: ${msg.command.slice(0, 50)}`);
+
+        // Send ack immediately if command has queue ID
+        if (msg.id && this.ws) {
+          this.ws.send(JSON.stringify({ type: 'ack', id: msg.id }));
+        }
+
         this.onCommand(msg);
         return;
       }
