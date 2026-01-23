@@ -102,7 +102,7 @@ describe('SessionRegistry', () => {
         test('validateToken validates a token', async () => {
             const token = await registry.mintToken('session-1', 'chat-123');
 
-            const result = registry.validateToken(token, 'chat-123');
+            const result = await registry.validateToken(token, 'chat-123');
             expect(result.valid).toBe(true);
             expect(result.session_id).toBe('session-1');
         });
@@ -110,7 +110,7 @@ describe('SessionRegistry', () => {
         test('validateToken rejects wrong chat_id', async () => {
             const token = await registry.mintToken('session-1', 'chat-123');
 
-            const result = registry.validateToken(token, 'chat-999');
+            const result = await registry.validateToken(token, 'chat-999');
             expect(result.valid).toBe(false);
             expect(result.error).toBe('Chat ID mismatch');
         });
@@ -120,7 +120,7 @@ describe('SessionRegistry', () => {
 
             await registry.revokeToken(token);
 
-            const result = registry.validateToken(token, 'chat-123');
+            const result = await registry.validateToken(token, 'chat-123');
             expect(result.valid).toBe(false);
             expect(result.error).toBe('Token not found');
         });

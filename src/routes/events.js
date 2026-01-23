@@ -259,7 +259,7 @@ function createEventRoutes(options) {
      *   - token: string (required)
      *   - chat_id: string|number (required)
      */
-    router.post('/tokens/validate', (req, res) => {
+    router.post('/tokens/validate', async (req, res) => {
         try {
             const { token, chat_id } = req.body;
 
@@ -267,7 +267,7 @@ function createEventRoutes(options) {
                 return res.status(400).json({ error: 'token and chat_id are required' });
             }
 
-            const result = registry.validateToken(token, chat_id);
+            const result = await registry.validateToken(token, chat_id);
             res.json(result);
         } catch (error) {
             logger.error?.(`Error in /tokens/validate: ${error.message}`) ||

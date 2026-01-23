@@ -513,30 +513,32 @@ class SessionRegistry {
      *
      * @param {string} token
      * @param {string|number} chatId - Must match the token's bound chat_id
-     * @returns {object} { valid: boolean, session_id?: string, scopes?: string[], error?: string }
+     * @returns {Promise<object>} { valid: boolean, session_id?: string, scopes?: string[], error?: string }
      */
-    validateToken(token, chatId) {
-        const tokens = this._loadTokens();
-        const record = tokens[token];
+    async validateToken(token, chatId) {
+        return this._withTokenLock(() => {
+            const tokens = this._loadTokens();
+            const record = tokens[token];
 
-        if (!record) {
-            return { valid: false, error: 'Token not found' };
-        }
+            if (!record) {
+                return { valid: false, error: 'Token not found' };
+            }
 
-        if (record.expires_at < Date.now()) {
-            return { valid: false, error: 'Token expired' };
-        }
+            if (record.expires_at < Date.now()) {
+                return { valid: false, error: 'Token expired' };
+            }
 
-        if (record.chat_id !== String(chatId)) {
-            return { valid: false, error: 'Chat ID mismatch' };
-        }
+            if (record.chat_id !== String(chatId)) {
+                return { valid: false, error: 'Chat ID mismatch' };
+            }
 
-        return {
-            valid: true,
-            session_id: record.session_id,
-            scopes: record.scopes,
-            context: record.context,
-        };
+            return {
+                valid: true,
+                session_id: record.session_id,
+                scopes: record.scopes,
+                context: record.context,
+            };
+        });
     }
 
     /**
