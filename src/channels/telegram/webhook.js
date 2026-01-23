@@ -95,7 +95,7 @@ class TelegramWebhookHandler {
         }
 
         // Mint a token for this notification
-        const token = this.registry.mintToken(session.session_id, chatId, {
+        const token = await this.registry.mintToken(session.session_id, chatId, {
             context: { event, summary },
         });
 

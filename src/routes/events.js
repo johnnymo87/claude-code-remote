@@ -35,7 +35,7 @@ function createEventRoutes(options) {
      *   - tmux_session: string - Tmux session name (if in tmux)
      *   - notify: boolean - Whether to send notifications (default: false)
      */
-    router.post('/session-start', (req, res) => {
+    router.post('/session-start', async (req, res) => {
         try {
             const { session_id, ppid, pid, start_time, cwd, nvim_socket, tmux_session, tmux_pane, tmux_pane_id, notify, label } = req.body;
 
@@ -43,7 +43,7 @@ function createEventRoutes(options) {
                 return res.status(400).json({ error: 'session_id is required' });
             }
 
-            const session = registry.upsertSession({
+            const session = await registry.upsertSession({
                 session_id,
                 ppid: ppid ? Number(ppid) : undefined,
                 pid: pid ? Number(pid) : undefined,
@@ -96,7 +96,7 @@ function createEventRoutes(options) {
             }
 
             // Update session state
-            registry.touchSession(session_id);
+            await registry.touchSession(session_id);
 
             // Only notify if opted in
             if (!session.notify) {
@@ -140,7 +140,7 @@ function createEventRoutes(options) {
      *   - label: string - Human-friendly label
      *   - nvim_socket: string - Neovim socket path (optional update)
      */
-    router.post('/sessions/enable-notify', (req, res) => {
+    router.post('/sessions/enable-notify', async (req, res) => {
         try {
             const { session_id, label, nvim_socket } = req.body;
 
@@ -148,7 +148,7 @@ function createEventRoutes(options) {
                 return res.status(400).json({ error: 'session_id is required' });
             }
 
-            const session = registry.enableNotify(session_id, label, { nvim_socket });
+            const session = await registry.enableNotify(session_id, label, { nvim_socket });
 
             if (!session) {
                 return res.status(404).json({ error: 'Session not found' });
@@ -223,9 +223,9 @@ function createEventRoutes(options) {
      *
      * Delete a session.
      */
-    router.delete('/sessions/:sessionId', (req, res) => {
+    router.delete('/sessions/:sessionId', async (req, res) => {
         try {
-            registry.deleteSession(req.params.sessionId);
+            await registry.deleteSession(req.params.sessionId);
             res.json({ ok: true });
         } catch (error) {
             logger.error?.(`Error in DELETE /sessions/:id: ${error.message}`) ||
@@ -239,9 +239,9 @@ function createEventRoutes(options) {
      *
      * Update last_seen for a session (keepalive).
      */
-    router.post('/sessions/:sessionId/heartbeat', (req, res) => {
+    router.post('/sessions/:sessionId/heartbeat', async (req, res) => {
         try {
-            registry.touchSession(req.params.sessionId);
+            await registry.touchSession(req.params.sessionId);
             res.json({ ok: true });
         } catch (error) {
             logger.error?.(`Error in heartbeat: ${error.message}`) ||
@@ -281,10 +281,10 @@ function createEventRoutes(options) {
      *
      * Trigger cleanup of expired sessions and tokens.
      */
-    router.post('/cleanup', (req, res) => {
+    router.post('/cleanup', async (req, res) => {
         try {
-            const expiredSessions = registry.cleanupExpiredSessions();
-            const expiredTokens = registry.cleanupExpiredTokens();
+            const expiredSessions = await registry.cleanupExpiredSessions();
+            const expiredTokens = await registry.cleanupExpiredTokens();
 
             res.json({
                 ok: true,

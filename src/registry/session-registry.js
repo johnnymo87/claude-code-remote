@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { Mutex } = require('async-mutex');
 
 const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const DEFAULT_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -37,12 +38,48 @@ class SessionRegistry {
         this.sessionsFile = path.join(this.dataDir, 'claude-sessions.json');
         this.tokensFile = path.join(this.dataDir, 'claude-tokens.json');
 
+        // Mutex to prevent race conditions on file operations
+        this._sessionsMutex = new Mutex();
+        this._tokensMutex = new Mutex();
+
         this._ensureDataDir();
     }
 
     _ensureDataDir() {
         if (!fs.existsSync(this.dataDir)) {
             fs.mkdirSync(this.dataDir, { recursive: true });
+        }
+    }
+
+    // =========================================================================
+    // Mutex helpers for thread-safe file operations
+    // =========================================================================
+
+    /**
+     * Execute a function with the sessions mutex held
+     * @param {function} fn - Async or sync function to execute
+     * @returns {Promise<*>} Result of fn
+     */
+    async _withSessionLock(fn) {
+        const release = await this._sessionsMutex.acquire();
+        try {
+            return await fn();
+        } finally {
+            release();
+        }
+    }
+
+    /**
+     * Execute a function with the tokens mutex held
+     * @param {function} fn - Async or sync function to execute
+     * @returns {Promise<*>} Result of fn
+     */
+    async _withTokenLock(fn) {
+        const release = await this._tokensMutex.acquire();
+        try {
+            return await fn();
+        } finally {
+            release();
         }
     }
 
@@ -61,41 +98,43 @@ class SessionRegistry {
      * @param {string} session.nvim_socket - Neovim socket path (if in nvim)
      * @param {string} session.label - Human-friendly label
      * @param {boolean} session.notify - Whether to send Telegram notifications
-     * @returns {object} The created/updated session
+     * @returns {Promise<object>} The created/updated session
      */
-    upsertSession(session) {
+    async upsertSession(session) {
         if (!session.session_id) {
             throw new Error('session_id is required');
         }
 
-        const sessions = this._loadSessions();
-        const now = Date.now();
+        return this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            const now = Date.now();
 
-        const existing = sessions[session.session_id];
+            const existing = sessions[session.session_id];
 
-        const updated = {
-            session_id: session.session_id,
-            ppid: session.ppid ?? existing?.ppid,
-            pid: session.pid ?? existing?.pid,
-            start_time: session.start_time ?? existing?.start_time,
-            cwd: session.cwd ?? existing?.cwd,
-            label: session.label ?? existing?.label,
-            notify: session.notify ?? existing?.notify ?? false,
-            transport: this._buildTransport(session, existing),
-            state: session.state ?? existing?.state ?? 'running',
-            created_at: existing?.created_at ?? now,
-            updated_at: now,
-            last_seen: now,
-            expires_at: now + DEFAULT_SESSION_TTL_MS,
-        };
+            const updated = {
+                session_id: session.session_id,
+                ppid: session.ppid ?? existing?.ppid,
+                pid: session.pid ?? existing?.pid,
+                start_time: session.start_time ?? existing?.start_time,
+                cwd: session.cwd ?? existing?.cwd,
+                label: session.label ?? existing?.label,
+                notify: session.notify ?? existing?.notify ?? false,
+                transport: this._buildTransport(session, existing),
+                state: session.state ?? existing?.state ?? 'running',
+                created_at: existing?.created_at ?? now,
+                updated_at: now,
+                last_seen: now,
+                expires_at: now + DEFAULT_SESSION_TTL_MS,
+            };
 
-        sessions[session.session_id] = updated;
-        this._saveSessions(sessions);
+            sessions[session.session_id] = updated;
+            this._saveSessions(sessions);
 
-        this.logger.info?.(`Session upserted: ${session.session_id}`) ||
-            this.logger.log?.(`Session upserted: ${session.session_id}`);
+            this.logger.info?.(`Session upserted: ${session.session_id}`) ||
+                this.logger.log?.(`Session upserted: ${session.session_id}`);
 
-        return updated;
+            return updated;
+        });
     }
 
     /**
@@ -205,14 +244,17 @@ class SessionRegistry {
      * Update session's last_seen timestamp (heartbeat)
      *
      * @param {string} sessionId
+     * @returns {Promise<void>}
      */
-    touchSession(sessionId) {
-        const sessions = this._loadSessions();
-        if (sessions[sessionId]) {
-            sessions[sessionId].last_seen = Date.now();
-            sessions[sessionId].expires_at = Date.now() + DEFAULT_SESSION_TTL_MS;
-            this._saveSessions(sessions);
-        }
+    async touchSession(sessionId) {
+        return this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            if (sessions[sessionId]) {
+                sessions[sessionId].last_seen = Date.now();
+                sessions[sessionId].expires_at = Date.now() + DEFAULT_SESSION_TTL_MS;
+                this._saveSessions(sessions);
+            }
+        });
     }
 
     /**
@@ -221,131 +263,161 @@ class SessionRegistry {
      * @param {string} sessionId
      * @param {string} label - Human-friendly label
      * @param {object} transport - Optional transport update
-     * @returns {object|null} Updated session or null if not found
+     * @returns {Promise<object|null>} Updated session or null if not found
      */
-    enableNotify(sessionId, label, transport = {}) {
-        const sessions = this._loadSessions();
-        const session = sessions[sessionId];
+    async enableNotify(sessionId, label, transport = {}) {
+        return this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            const session = sessions[sessionId];
 
-        if (!session) {
-            return null;
-        }
+            if (!session) {
+                return null;
+            }
 
-        session.notify = true;
-        session.label = label || session.label;
-        session.updated_at = Date.now();
-        session.last_seen = Date.now();
+            session.notify = true;
+            session.label = label || session.label;
+            session.updated_at = Date.now();
+            session.last_seen = Date.now();
 
-        // Update transport if provided
-        if (transport.nvim_socket) {
-            session.transport = {
-                ...session.transport,
-                kind: 'nvim',
-                nvim_socket: transport.nvim_socket,
-            };
-        }
+            // Update transport if provided
+            if (transport.nvim_socket) {
+                session.transport = {
+                    ...session.transport,
+                    kind: 'nvim',
+                    nvim_socket: transport.nvim_socket,
+                };
+            }
 
-        this._saveSessions(sessions);
+            this._saveSessions(sessions);
 
-        this.logger.info?.(`Notifications enabled for session: ${sessionId} (${label})`) ||
-            this.logger.log?.(`Notifications enabled for session: ${sessionId} (${label})`);
+            this.logger.info?.(`Notifications enabled for session: ${sessionId} (${label})`) ||
+                this.logger.log?.(`Notifications enabled for session: ${sessionId} (${label})`);
 
-        return session;
+            return session;
+        });
     }
 
     /**
      * Mark a session as stopped
      *
      * @param {string} sessionId
+     * @returns {Promise<void>}
      */
-    stopSession(sessionId) {
-        const sessions = this._loadSessions();
-        if (sessions[sessionId]) {
-            sessions[sessionId].state = 'stopped';
-            sessions[sessionId].updated_at = Date.now();
-            this._saveSessions(sessions);
-        }
+    async stopSession(sessionId) {
+        return this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            if (sessions[sessionId]) {
+                sessions[sessionId].state = 'stopped';
+                sessions[sessionId].updated_at = Date.now();
+                this._saveSessions(sessions);
+            }
+        });
     }
 
     /**
      * Delete a session
      *
      * @param {string} sessionId
+     * @returns {Promise<void>}
      */
-    deleteSession(sessionId) {
-        const sessions = this._loadSessions();
-        if (sessions[sessionId]) {
-            delete sessions[sessionId];
-            this._saveSessions(sessions);
+    async deleteSession(sessionId) {
+        await this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            if (sessions[sessionId]) {
+                delete sessions[sessionId];
+                this._saveSessions(sessions);
+            }
+        });
 
-            // Also clean up any tokens for this session
-            this._cleanupTokensForSession(sessionId);
-        }
+        // Also clean up any tokens for this session (outside session lock to avoid deadlock)
+        await this._cleanupTokensForSession(sessionId);
     }
 
     /**
      * Clean up expired sessions
      *
-     * @returns {number} Number of sessions cleaned up
+     * @returns {Promise<number>} Number of sessions cleaned up
      */
-    cleanupExpiredSessions() {
-        const sessions = this._loadSessions();
-        const now = Date.now();
-        let count = 0;
+    async cleanupExpiredSessions() {
+        return this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            const now = Date.now();
+            let count = 0;
 
-        for (const [id, session] of Object.entries(sessions)) {
-            if (session.expires_at && session.expires_at < now) {
-                delete sessions[id];
-                count++;
+            for (const [id, session] of Object.entries(sessions)) {
+                if (session.expires_at && session.expires_at < now) {
+                    delete sessions[id];
+                    count++;
+                }
             }
-        }
 
-        if (count > 0) {
-            this._saveSessions(sessions);
-            this.logger.info?.(`Cleaned up ${count} expired sessions`) ||
-                this.logger.log?.(`Cleaned up ${count} expired sessions`);
-        }
+            if (count > 0) {
+                this._saveSessions(sessions);
+                this.logger.info?.(`Cleaned up ${count} expired sessions`) ||
+                    this.logger.log?.(`Cleaned up ${count} expired sessions`);
+            }
 
-        return count;
+            return count;
+        });
     }
 
     /**
      * Clean up dead sessions by validating PID + start_time
      * This catches sessions where the process has exited (faster than TTL expiry)
      *
-     * @returns {number} Number of sessions cleaned up
+     * @returns {Promise<number>} Number of sessions cleaned up
      */
     async cleanupDeadSessions() {
-        const sessions = this._loadSessions();
-        let count = 0;
+        // First, get a snapshot of sessions to check (short lock)
+        const sessionsToCheck = await this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            const candidates = [];
+            for (const [id, session] of Object.entries(sessions)) {
+                // Only check sessions that have notify enabled (they're the ones that matter)
+                if (!session.notify) continue;
+                // Need at least ppid to validate
+                if (!session.ppid) continue;
+                candidates.push({ id, ppid: session.ppid, start_time: session.start_time, label: session.label });
+            }
+            return candidates;
+        });
+
+        // Check process liveness outside the lock (can be slow)
         const toDelete = [];
-
-        for (const [id, session] of Object.entries(sessions)) {
-            // Only check sessions that have notify enabled (they're the ones that matter)
-            if (!session.notify) continue;
-
-            // Need at least ppid to validate
-            if (!session.ppid) continue;
-
-            const isAlive = await this._isProcessAlive(session.ppid, session.start_time);
+        for (const { id, ppid, start_time, label } of sessionsToCheck) {
+            const isAlive = await this._isProcessAlive(ppid, start_time);
             if (!isAlive) {
                 toDelete.push(id);
-                this.logger.info?.(`Session ${id} (${session.label}) is dead (PID ${session.ppid} not running or start_time mismatch)`) ||
-                    this.logger.log?.(`Session ${id} (${session.label}) is dead`);
+                this.logger.info?.(`Session ${id} (${label}) is dead (PID ${ppid} not running or start_time mismatch)`) ||
+                    this.logger.log?.(`Session ${id} (${label}) is dead`);
             }
         }
 
-        // Delete dead sessions
-        for (const id of toDelete) {
-            delete sessions[id];
-            count++;
-            this._cleanupTokensForSession(id);
+        if (toDelete.length === 0) {
+            return 0;
         }
 
-        if (count > 0) {
-            this._saveSessions(sessions);
-            this.logger.info?.(`Cleaned up ${count} dead sessions`) ||
-                this.logger.log?.(`Cleaned up ${count} dead sessions`);
+        // Delete dead sessions (with lock)
+        const count = await this._withSessionLock(() => {
+            const sessions = this._loadSessions();
+            let deleted = 0;
+            for (const id of toDelete) {
+                if (sessions[id]) {
+                    delete sessions[id];
+                    deleted++;
+                }
+            }
+            if (deleted > 0) {
+                this._saveSessions(sessions);
+                this.logger.info?.(`Cleaned up ${deleted} dead sessions`) ||
+                    this.logger.log?.(`Cleaned up ${deleted} dead sessions`);
+            }
+            return deleted;
+        });
+
+        // Clean up tokens for deleted sessions (outside session lock)
+        for (const id of toDelete) {
+            await this._cleanupTokensForSession(id);
         }
 
         return count;
@@ -411,27 +483,29 @@ class SessionRegistry {
      * @param {number} options.ttlMs - Token TTL in milliseconds
      * @param {string[]} options.scopes - Allowed actions
      * @param {object} options.context - Additional context (event type, summary)
-     * @returns {string} The minted token
+     * @returns {Promise<string>} The minted token
      */
-    mintToken(sessionId, chatId, options = {}) {
-        const tokens = this._loadTokens();
+    async mintToken(sessionId, chatId, options = {}) {
+        return this._withTokenLock(() => {
+            const tokens = this._loadTokens();
 
-        const token = crypto.randomBytes(16).toString('base64url');
-        const now = Date.now();
+            const token = crypto.randomBytes(16).toString('base64url');
+            const now = Date.now();
 
-        tokens[token] = {
-            token,
-            session_id: sessionId,
-            chat_id: String(chatId),
-            created_at: now,
-            expires_at: now + (options.ttlMs ?? DEFAULT_TOKEN_TTL_MS),
-            scopes: options.scopes ?? ['send_cmd'],
-            context: options.context ?? {},
-        };
+            tokens[token] = {
+                token,
+                session_id: sessionId,
+                chat_id: String(chatId),
+                created_at: now,
+                expires_at: now + (options.ttlMs ?? DEFAULT_TOKEN_TTL_MS),
+                scopes: options.scopes ?? ['send_cmd'],
+                context: options.context ?? {},
+            };
 
-        this._saveTokens(tokens);
+            this._saveTokens(tokens);
 
-        return token;
+            return token;
+        });
     }
 
     /**
@@ -469,56 +543,65 @@ class SessionRegistry {
      * Revoke a token
      *
      * @param {string} token
+     * @returns {Promise<void>}
      */
-    revokeToken(token) {
-        const tokens = this._loadTokens();
-        if (tokens[token]) {
-            delete tokens[token];
-            this._saveTokens(tokens);
-        }
+    async revokeToken(token) {
+        return this._withTokenLock(() => {
+            const tokens = this._loadTokens();
+            if (tokens[token]) {
+                delete tokens[token];
+                this._saveTokens(tokens);
+            }
+        });
     }
 
     /**
      * Clean up expired tokens
      *
-     * @returns {number} Number of tokens cleaned up
+     * @returns {Promise<number>} Number of tokens cleaned up
      */
-    cleanupExpiredTokens() {
-        const tokens = this._loadTokens();
-        const now = Date.now();
-        let count = 0;
+    async cleanupExpiredTokens() {
+        return this._withTokenLock(() => {
+            const tokens = this._loadTokens();
+            const now = Date.now();
+            let count = 0;
 
-        for (const [token, record] of Object.entries(tokens)) {
-            if (record.expires_at < now) {
-                delete tokens[token];
-                count++;
+            for (const [token, record] of Object.entries(tokens)) {
+                if (record.expires_at < now) {
+                    delete tokens[token];
+                    count++;
+                }
             }
-        }
 
-        if (count > 0) {
-            this._saveTokens(tokens);
-        }
+            if (count > 0) {
+                this._saveTokens(tokens);
+            }
 
-        return count;
+            return count;
+        });
     }
 
     /**
      * Clean up all tokens for a session
+     * @param {string} sessionId
+     * @returns {Promise<void>}
      */
-    _cleanupTokensForSession(sessionId) {
-        const tokens = this._loadTokens();
-        let changed = false;
+    async _cleanupTokensForSession(sessionId) {
+        return this._withTokenLock(() => {
+            const tokens = this._loadTokens();
+            let changed = false;
 
-        for (const [token, record] of Object.entries(tokens)) {
-            if (record.session_id === sessionId) {
-                delete tokens[token];
-                changed = true;
+            for (const [token, record] of Object.entries(tokens)) {
+                if (record.session_id === sessionId) {
+                    delete tokens[token];
+                    changed = true;
+                }
             }
-        }
 
-        if (changed) {
-            this._saveTokens(tokens);
-        }
+            if (changed) {
+                this._saveTokens(tokens);
+            }
+        });
     }
 
     // =========================================================================

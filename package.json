@@ -7,7 +7,8 @@
     "setup": "node setup.js",
     "telegram": "node start-telegram-webhook.js",
     "webhooks": "node start-all-webhooks.js",
-    "webhooks:log": "mkdir -p ~/.local/state/claude-code-remote && node start-all-webhooks.js 2>&1 | tee ~/.local/state/claude-code-remote/daemon.log"
+    "webhooks:log": "mkdir -p ~/.local/state/claude-code-remote && node start-all-webhooks.js 2>&1 | tee ~/.local/state/claude-code-remote/daemon.log",
+    "test": "jest"
   },
   "keywords": [
     "claude-code",
@@ -39,6 +40,7 @@
   },
   "homepage": "https://github.com/Claude-Code-Remote/Claude-Code-Remote#readme",
   "dependencies": {
+    "async-mutex": "^0.5.0",
     "axios": "^1.6.0",
     "better-sqlite3": "^12.5.0",
     "dotenv": "^17.2.1",
@@ -60,5 +62,8 @@
     "README.md",
     "QUICKSTART.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "jest": "^30.2.0"
+  }
 }
