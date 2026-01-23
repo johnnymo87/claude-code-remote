@@ -1,6 +1,9 @@
 // src/worker-client/machine-agent.js
 const WebSocket = require('ws');
 const os = require('os');
+const path = require('path');
+const fs = require('fs');
+const Database = require('better-sqlite3');
 const Logger = require('../core/logger');
 
 const logger = new Logger('MachineAgent');
@@ -16,6 +19,94 @@ class MachineAgent {
     this.reconnectDelay = 1000;
     this.maxReconnectDelay = 30000;
     this.pingInterval = null;
+    this.cleanupInterval = null;
+
+    // Durable inbox for exactly-once execution
+    this.initInbox();
+  }
+
+  initInbox() {
+    // Store in user's data directory
+    const dataDir = process.env.CCR_DATA_DIR || path.join(process.env.HOME, '.ccr');
+    fs.mkdirSync(dataDir, { recursive: true });
+
+    const dbPath = path.join(dataDir, `inbox-${this.machineId}.db`);
+    this.inbox = new Database(dbPath);
+
+    // Create inbox table
+    this.inbox.exec(`
+      CREATE TABLE IF NOT EXISTS inbox (
+        command_id TEXT PRIMARY KEY,
+        received_at INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'received',
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // Prepared statements for performance
+    this.stmts = {
+      insert: this.inbox.prepare(`
+        INSERT OR IGNORE INTO inbox (command_id, received_at, payload, status, updated_at)
+        VALUES (?, ?, ?, 'received', ?)
+      `),
+      markDone: this.inbox.prepare(`
+        UPDATE inbox SET status = 'done', updated_at = ? WHERE command_id = ?
+      `),
+      getUnfinished: this.inbox.prepare(`
+        SELECT command_id, payload FROM inbox WHERE status != 'done'
+      `),
+      cleanup: this.inbox.prepare(`
+        DELETE FROM inbox WHERE status = 'done' AND updated_at < ?
+      `)
+    };
+
+    logger.info(`Inbox initialized at ${dbPath}`);
+  }
+
+  // Returns true if this is a new command (inserted), false if duplicate (ignored)
+  persistToInbox(commandId, payload) {
+    const now = Date.now();
+    const result = this.stmts.insert.run(commandId, now, JSON.stringify(payload), now);
+    return result.changes > 0;
+  }
+
+  markCommandDone(commandId) {
+    this.stmts.markDone.run(Date.now(), commandId);
+  }
+
+  getUnfinishedCommands() {
+    return this.stmts.getUnfinished.all().map(row => ({
+      commandId: row.command_id,
+      payload: JSON.parse(row.payload)
+    }));
+  }
+
+  cleanupInbox() {
+    // Remove done commands older than 1 hour
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    const result = this.stmts.cleanup.run(oneHourAgo);
+    if (result.changes > 0) {
+      logger.info(`Cleaned ${result.changes} completed inbox entries`);
+    }
+  }
+
+  replayUnfinishedCommands() {
+    const unfinished = this.getUnfinishedCommands();
+    if (unfinished.length === 0) return;
+
+    logger.info(`Replaying ${unfinished.length} unfinished commands from inbox`);
+
+    for (const { commandId, payload } of unfinished) {
+      logger.info(`Replaying command ${commandId}`);
+      try {
+        this.onCommand(payload);
+        this.markCommandDone(commandId);
+      } catch (err) {
+        logger.error(`Replay of ${commandId} failed:`, err.message);
+        // Leave in inbox for next restart
+      }
+    }
   }
 
   async connect() {
@@ -42,6 +133,12 @@ class MachineAgent {
         logger.info(`Authenticated and connected as ${this.machineId}`);
         this.reconnectDelay = 1000;
         this.startPing();
+
+        // Replay any commands that were received but not finished
+        this.replayUnfinishedCommands();
+
+        // Periodic inbox cleanup (every hour)
+        this.cleanupInterval = setInterval(() => this.cleanupInbox(), 60 * 60 * 1000);
       });
 
       this.ws.on('message', (data) => {
@@ -51,6 +148,10 @@ class MachineAgent {
       this.ws.on('close', (code, reason) => {
         logger.warn(`WebSocket closed (${code}: ${reason}), reconnecting...`);
         this.stopPing();
+        if (this.cleanupInterval) {
+          clearInterval(this.cleanupInterval);
+          this.cleanupInterval = null;
+        }
         this.scheduleReconnect();
       });
 
@@ -69,18 +170,53 @@ class MachineAgent {
       const msg = JSON.parse(data);
 
       if (msg.type === 'pong') {
+        this.lastPongAt = Date.now();
         return;
       }
 
       if (msg.type === 'command') {
-        logger.info(`Received command for session ${msg.sessionId}: ${msg.command.slice(0, 50)}`);
+        const commandId = msg.commandId || msg.id; // Support both formats
 
-        // Send ack immediately if command has queue ID
-        if (msg.id && this.ws) {
-          this.ws.send(JSON.stringify({ type: 'ack', id: msg.id }));
+        if (!commandId) {
+          logger.warn('Received command without ID, cannot process durably');
+          return;
         }
 
-        this.onCommand(msg);
+        // Step 1: Persist to durable inbox (INSERT OR IGNORE)
+        const isNew = this.persistToInbox(commandId, msg);
+
+        // Step 2: Ack AFTER durable write (tells DO we have it safely stored)
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'ack', commandId }));
+        }
+
+        // Step 3: If duplicate, we're done (already processed or in progress)
+        if (!isNew) {
+          logger.info(`Duplicate command ${commandId} - already in inbox`);
+          return;
+        }
+
+        logger.info(`Received command ${commandId} for session ${msg.sessionId}`);
+
+        // Step 4: Execute command
+        try {
+          this.onCommand(msg);
+          // Step 5: Mark done after successful execution
+          this.markCommandDone(commandId);
+        } catch (err) {
+          logger.error(`Command ${commandId} execution failed:`, err.message);
+          // Don't mark done - will retry on restart
+          // Send failure result to DO
+          if (this.ws && msg.chatId) {
+            this.ws.send(JSON.stringify({
+              type: 'commandResult',
+              commandId,
+              success: false,
+              error: err.message,
+              chatId: msg.chatId
+            }));
+          }
+        }
         return;
       }
 
@@ -197,6 +333,13 @@ class MachineAgent {
 
   close() {
     this.stopPing();
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    if (this.inbox) {
+      this.inbox.close();
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
