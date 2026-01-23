@@ -18,8 +18,11 @@ class MachineAgent {
     this.ws = null;
     this.reconnectDelay = 1000;
     this.maxReconnectDelay = 30000;
+    this.reconnectTimer = null;
     this.pingInterval = null;
     this.cleanupInterval = null;
+    this.lastPongAt = null;
+    this.PONG_TIMEOUT_MS = 90000; // 3 missed pings (30s each)
 
     // Durable inbox for exactly-once execution
     this.initInbox();
@@ -132,6 +135,13 @@ class MachineAgent {
       this.ws.on('open', () => {
         logger.info(`Authenticated and connected as ${this.machineId}`);
         this.reconnectDelay = 1000;
+
+        // Clear any pending reconnect timer
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+
         this.startPing();
 
         // Replay any commands that were received but not finished
@@ -147,7 +157,10 @@ class MachineAgent {
 
       this.ws.on('close', (code, reason) => {
         logger.warn(`WebSocket closed (${code}: ${reason}), reconnecting...`);
-        this.stopPing();
+        if (this.pingInterval) {
+          clearInterval(this.pingInterval);
+          this.pingInterval = null;
+        }
         if (this.cleanupInterval) {
           clearInterval(this.cleanupInterval);
           this.cleanupInterval = null;
@@ -157,6 +170,19 @@ class MachineAgent {
 
       this.ws.on('error', (err) => {
         logger.error('WebSocket error:', err.message);
+        // Clear intervals on error
+        if (this.pingInterval) {
+          clearInterval(this.pingInterval);
+          this.pingInterval = null;
+        }
+        if (this.cleanupInterval) {
+          clearInterval(this.cleanupInterval);
+          this.cleanupInterval = null;
+        }
+        // Force clean close
+        if (this.ws) {
+          this.ws.terminate();
+        }
       });
 
     } catch (err) {
@@ -227,8 +253,17 @@ class MachineAgent {
   }
 
   startPing() {
+    this.lastPongAt = Date.now();
+
     this.pingInterval = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        // Check for stale connection (no pong received)
+        if (this.lastPongAt && (Date.now() - this.lastPongAt) > this.PONG_TIMEOUT_MS) {
+          logger.warn('Connection stale (no pong for 90s), terminating');
+          this.ws.terminate();
+          return;
+        }
+
         this.ws.send(JSON.stringify({ type: 'ping' }));
       }
     }, 30000); // Every 30 seconds
@@ -242,7 +277,13 @@ class MachineAgent {
   }
 
   scheduleReconnect() {
-    setTimeout(() => {
+    // Cancel any existing timer to prevent stacking
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+    }
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
       this.connect();
     }, this.reconnectDelay);
@@ -332,6 +373,11 @@ class MachineAgent {
   }
 
   close() {
+    // Cancel any pending reconnect
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.stopPing();
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
