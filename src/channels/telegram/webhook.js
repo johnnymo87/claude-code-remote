@@ -41,6 +41,26 @@ class TelegramWebhookHandler {
 
         // Machine agent for Worker communication (set externally)
         this.machineAgent = null;
+
+        // Periodic cleanup of expired sessions/tokens (every hour)
+        this._cleanupInterval = setInterval(() => {
+            this._runCleanup();
+        }, 60 * 60 * 1000);
+
+        // Run cleanup on startup too
+        this._runCleanup();
+    }
+
+    async _runCleanup() {
+        try {
+            const sessions = await this.registry.cleanupExpiredSessions();
+            const tokens = await this.registry.cleanupExpiredTokens();
+            if (sessions > 0 || tokens > 0) {
+                this.logger.info(`Cleanup: ${sessions} sessions, ${tokens} tokens removed`);
+            }
+        } catch (err) {
+            this.logger.error(`Cleanup failed: ${err.message}`);
+        }
     }
 
     /**
@@ -49,6 +69,17 @@ class TelegramWebhookHandler {
      */
     setMachineAgent(agent) {
         this.machineAgent = agent;
+    }
+
+    /**
+     * Clean up resources and stop the webhook handler
+     * Clears the cleanup interval to prevent memory leaks
+     */
+    close() {
+        if (this._cleanupInterval) {
+            clearInterval(this._cleanupInterval);
+            this._cleanupInterval = null;
+        }
     }
 
     _setupMiddleware() {
