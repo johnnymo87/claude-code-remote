@@ -34,20 +34,22 @@ class MachineAgent {
     logger.info(`Connecting to Worker: ${wsUrl}`);
 
     try {
-      this.ws = new WebSocket(wsUrl);
+      // Send API key via Sec-WebSocket-Protocol header
+      // Format: "ccr, <api-key>"
+      this.ws = new WebSocket(wsUrl, [`ccr`, this.apiKey]);
 
       this.ws.on('open', () => {
-        logger.info(`WebSocket open, sending auth...`);
-        // Send auth message immediately - don't start ping until authSuccess
-        this.ws.send(JSON.stringify({ type: 'auth', apiKey: this.apiKey }));
+        logger.info(`Authenticated and connected as ${this.machineId}`);
+        this.reconnectDelay = 1000;
+        this.startPing();
       });
 
       this.ws.on('message', (data) => {
         this.handleMessage(data);
       });
 
-      this.ws.on('close', () => {
-        logger.warn('WebSocket closed, reconnecting...');
+      this.ws.on('close', (code, reason) => {
+        logger.warn(`WebSocket closed (${code}: ${reason}), reconnecting...`);
         this.stopPing();
         this.scheduleReconnect();
       });
@@ -66,15 +68,8 @@ class MachineAgent {
     try {
       const msg = JSON.parse(data);
 
-      if (msg.type === 'authSuccess') {
-        logger.info(`Authenticated as ${this.machineId}`);
-        this.reconnectDelay = 1000; // Reset on successful auth
-        this.startPing();
-        return;
-      }
-
       if (msg.type === 'pong') {
-        return; // Ping response
+        return;
       }
 
       if (msg.type === 'command') {
