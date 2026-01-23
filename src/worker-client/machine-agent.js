@@ -94,7 +94,7 @@ class MachineAgent {
     }
   }
 
-  replayUnfinishedCommands() {
+  async replayUnfinishedCommands() {
     const unfinished = this.getUnfinishedCommands();
     if (unfinished.length === 0) return;
 
@@ -103,8 +103,9 @@ class MachineAgent {
     for (const { commandId, payload } of unfinished) {
       logger.info(`Replaying command ${commandId}`);
       try {
-        this.onCommand(payload);
+        await Promise.resolve(this.onCommand(payload));
         this.markCommandDone(commandId);
+        logger.info(`Replay of ${commandId} completed`);
       } catch (err) {
         logger.error(`Replay of ${commandId} failed:`, err.message);
         // Leave in inbox for next restart
@@ -224,25 +225,26 @@ class MachineAgent {
 
         logger.info(`Received command ${commandId} for session ${msg.sessionId}`);
 
-        // Step 4: Execute command
-        try {
-          this.onCommand(msg);
-          // Step 5: Mark done after successful execution
-          this.markCommandDone(commandId);
-        } catch (err) {
-          logger.error(`Command ${commandId} execution failed:`, err.message);
-          // Don't mark done - will retry on restart
-          // Send failure result to DO
-          if (this.ws && msg.chatId) {
-            this.ws.send(JSON.stringify({
-              type: 'commandResult',
-              commandId,
-              success: false,
-              error: err.message,
-              chatId: msg.chatId
-            }));
-          }
-        }
+        // Execute command (handle both sync and async)
+        Promise.resolve()
+          .then(() => this.onCommand(msg))
+          .then(() => {
+            this.markCommandDone(commandId);
+            logger.info(`Command ${commandId} completed`);
+          })
+          .catch(err => {
+            logger.error(`Command ${commandId} execution failed:`, err.message);
+            // Don't mark done - will retry on restart
+            if (this.ws && this.ws.readyState === WebSocket.OPEN && msg.chatId) {
+              this.ws.send(JSON.stringify({
+                type: 'commandResult',
+                commandId,
+                success: false,
+                error: err.message,
+                chatId: msg.chatId
+              }));
+            }
+          });
         return;
       }
 
