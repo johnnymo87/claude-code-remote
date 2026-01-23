@@ -179,3 +179,42 @@ npm run webhooks:log
 # Check Worker connection in logs:
 # [MachineAgent] [INFO] Connected to Worker as devbox
 ```
+
+## Design Decisions & Known Limitations
+
+### Documented from ChatGPT Code Review (2026-01-23)
+
+**Issue 6: API key in WebSocket subprotocol**
+- We send the API key via `Sec-WebSocket-Protocol` header instead of `Authorization`
+- Reason: Cloudflare Workers don't forward arbitrary headers on WebSocket upgrade
+- The subprotocol approach is a known workaround for this platform limitation
+- Risk: Could leak to logs depending on platform tooling (Cloudflare doesn't log it)
+
+**Issue 7: Rate limiting**
+- We have queue caps (100 commands/machine) and command size limits (10KB)
+- We do NOT have per-minute rate limiting for webhooks or API calls
+- If webhook secret leaks, system could be hammered with large updates
+- Consider adding SQLite-based counters if this becomes a problem
+
+**Issue 9: WebSocket ArrayBuffer handling**
+- Already fixed: we check `typeof message === 'string' ? message.length : message.byteLength`
+- Cloudflare may send binary messages, which we now handle
+
+**Issue 10: Webhook I/O before responding**
+- We do Telegram API calls before returning 200 OK to webhook
+- This increases latency and can cause Telegram to retry
+- We handle duplicates via `seen_updates` table, so this is acceptable
+- Tradeoff: Simpler code vs. using waitUntil for async sends
+
+### Command Delivery Guarantees
+
+**At-least-once delivery** (DO side):
+- Commands persisted to `command_queue` before any send attempt
+- Retry sweep runs hourly for unacked `sent` commands
+- Commands cleaned up after 24h if never acked (dead letter)
+
+**Exactly-once execution** (Agent side):
+- Commands persisted to local SQLite inbox before ack
+- Ack sent only after durable write
+- Duplicates detected via `INSERT OR IGNORE`
+- Commands replayed on restart if not marked done
