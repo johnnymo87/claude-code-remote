@@ -29,7 +29,10 @@ For multi-machine setups, a Cloudflare Worker routes replies to the correct mach
 |-------|-------------|
 | [architecture](.claude/skills/architecture/SKILL.md) | System design, notification flow, project structure |
 | [configuring-notifications](.claude/skills/configuring-notifications/SKILL.md) | Setting up Telegram (Worker vs Direct mode) |
-| [troubleshooting](.claude/skills/troubleshooting/SKILL.md) | Worker issues, notifications not sending, commands failing |
+| [machine-setup](.claude/skills/machine-setup/SKILL.md) | Adding a new machine to the CCR network |
+| [operations](.claude/skills/operations/SKILL.md) | Logs, restarts, health checks, runbook |
+| [hooks](.claude/skills/hooks/SKILL.md) | Claude Code hooks (SessionStart, Stop) |
+| [troubleshooting](.claude/skills/troubleshooting/SKILL.md) | Debugging common issues |
 
 ## Commands
 
