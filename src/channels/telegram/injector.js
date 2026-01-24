@@ -60,8 +60,8 @@ class TmuxInjector {
             await spawnAsync('tmux', ['send-keys', '-t', this.target, 'C-u']);
             await delay(100);
 
-            // Send the command
-            await spawnAsync('tmux', ['send-keys', '-t', this.target, command]);
+            // Send the command (-l for literal mode, prevents escaping special chars)
+            await spawnAsync('tmux', ['send-keys', '-l', '-t', this.target, command]);
             await delay(100);
 
             // Send Enter
