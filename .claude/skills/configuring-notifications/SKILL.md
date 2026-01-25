@@ -9,55 +9,51 @@ description: Use when setting up Telegram notifications, or when notifications a
 
 Claude Code Remote sends notifications via Telegram and supports reply-to-command functionality.
 
-## Interactive Setup (Recommended)
+## Prerequisites
 
-```bash
-npm run setup
-```
-
-This wizard:
-- Guides you through Telegram configuration
-- Creates/updates your `.env` file
-- Merges hooks into `~/.claude/settings.json`
+- devenv installed (provides Node.js and SecretSpec)
+- Secrets configured (see `machine-setup` skill for platform-specific instructions)
 
 ## Telegram Setup
 
-### Option A: Worker Routing (Multi-Machine)
+### Step 1: Create Bot
 
-Best for running Claude on multiple machines simultaneously.
-
-**Step 1: Create bot**
 1. Message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot` and follow prompts
 3. Save the bot token
 
-**Step 2: Get your Chat ID**
+### Step 2: Get Your Chat ID
+
 ```bash
 # Send any message to your bot, then:
 curl "https://api.telegram.org/bot<TOKEN>/getUpdates" | jq '.result[0].message.chat.id'
 ```
 
-**Step 3: Deploy Worker** (one-time, from any machine)
+### Step 3: Generate Webhook Secrets
 
-See the ccr-worker project or workstation's `docs/plans/2026-01-21-ccr-cloudflare-worker-routing.md`
+```bash
+# Generate webhook secret (32 bytes hex)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
-**Step 4: Configure .env** (on each machine)
-```env
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=your-bot-token
-TELEGRAM_CHAT_ID=your-chat-id
-
-# Worker routing (omit WEBHOOK_DOMAIN when using Worker)
-CCR_WORKER_URL=https://ccr-router.your-account.workers.dev
-CCR_MACHINE_ID=devbox  # unique per machine: 'devbox', 'macbook', etc.
+# Generate path secret (16 bytes hex)
+node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
 ```
 
-**Step 5: Point webhook to Worker**
+### Step 4: Store Secrets
+
+See the `machine-setup` skill for platform-specific instructions:
+- **Devbox**: Add to sops-nix in workstation repo
+- **macOS**: Store in Keychain via `security add-generic-password`
+- **Worker**: Set via `wrangler secret put`
+
+### Step 5: Point Webhook to Worker
+
 ```bash
-BOT_TOKEN="your-bot-token"
+# Get values from your secret storage
+BOT_TOKEN="<from keychain or /run/secrets>"
 WORKER_URL="https://ccr-router.your-account.workers.dev"
-WEBHOOK_SECRET="your-webhook-secret"
-PATH_SECRET="your-path-secret"
+WEBHOOK_SECRET="<from keychain or /run/secrets>"
+PATH_SECRET="<from keychain or /run/secrets>"
 
 curl -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
@@ -67,71 +63,66 @@ curl -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
   }"
 ```
 
-**Step 6: Verify connection**
+### Step 6: Verify Connection
+
 ```bash
-npm run webhooks:log
-# Look for: [MachineAgent] [INFO] Connected to Worker as devbox
+# Devbox
+devenv shell
+ccr-start npm run webhooks:log
+
+# macOS
+devenv shell
+secretspec run -- npm run webhooks:log
+
+# Look for: [MachineAgent] [INFO] Authenticated and connected as <machine-id>
 ```
 
-### Option B: Direct Mode (Single Machine)
+## Direct Mode (Single Machine Alternative)
 
-Simpler setup for single-machine use.
+For single-machine setups without the Worker:
 
-**Step 1-2:** Same as above
-
-**Step 3: Set up tunnel**
-
-Expose port 4731 via Cloudflare Tunnel, ngrok, or similar.
-
-**Step 4: Configure .env**
-```env
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=your-bot-token
-TELEGRAM_CHAT_ID=your-chat-id
-WEBHOOK_DOMAIN=ccr.yourdomain.com
-
-# Security (optional but recommended)
-TELEGRAM_WEBHOOK_SECRET=your-32-byte-hex-secret
-TELEGRAM_WEBHOOK_PATH_SECRET=your-16-byte-hex-secret
-```
-
-The webhook URL is set automatically on server start.
+1. Expose port 4731 via Cloudflare Tunnel, ngrok, or similar
+2. Set `WEBHOOK_DOMAIN` in secretspec.toml defaults or as env var
+3. Omit `CCR_WORKER_URL` - webhook URL is set automatically on server start
 
 ## Verify Configuration
 
 ```bash
-# Test notification
-node claude-hook-notify.js completed
+# Test notification (from devenv shell)
+ccr-start node claude-hook-notify.js completed  # devbox
+secretspec run -- node claude-hook-notify.js completed  # macOS
 
-# Check Worker connection (if using Worker routing)
-journalctl -u ccr-webhooks -f  # or check console output
+# Check webhook status
+curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 ```
 
 ## Common Issues
 
-### Commands not reaching Claude
+### Commands Not Reaching Claude
 
-**With Worker routing:**
+**Check machine agent connection:**
 ```bash
-# Check machine agent is connected
-npm run webhooks:log
-# Look for: Connected to Worker as <machine-id>
+# In webhook server logs, look for:
+[MachineAgent] [INFO] Authenticated and connected as <machine-id>
+```
 
-# Check Worker sessions
+**Check Worker sessions:**
+```bash
 curl https://ccr-router.your-account.workers.dev/sessions
 ```
 
-**With direct mode:**
-```bash
-# Check webhook status
-curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
-```
+### Wrong Machine Receives Command
 
-### Wrong machine receives command
+Each machine must have a unique `CCR_MACHINE_ID`:
+- Devbox: Set in `ccr-start` script (hardcoded to "devbox")
+- macOS: Store in Keychain as `CCR_MACHINE_ID`
 
-Ensure each machine has a unique `CCR_MACHINE_ID` in `.env`.
+### IPv6 Connectivity Issues
 
-### IPv6 connectivity issues
-```env
-TELEGRAM_FORCE_IPV4=true
-```
+Set `TELEGRAM_FORCE_IPV4=true` in secretspec.toml or as env var override.
+
+## Related Skills
+
+- `machine-setup` - Platform-specific secret storage
+- `security` - Secret management architecture
+- `operations` - Starting/stopping services

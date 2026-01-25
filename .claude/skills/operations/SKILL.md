@@ -32,41 +32,54 @@ curl -s http://localhost:4731/sessions | jq '.sessions[] | {label, session_id}'
 ### Worker
 
 ```bash
-# Health check
-curl -s https://ccr-router.jonathan-mohrbacher.workers.dev/health
+# Health check (replace with your worker URL)
+curl -s https://ccr-router.your-account.workers.dev/health
 # Expected: ok
 
 # List connected machines
-curl -s https://ccr-router.jonathan-mohrbacher.workers.dev/sessions | jq
+curl -s https://ccr-router.your-account.workers.dev/sessions | jq
 ```
 
 ### Telegram Webhook
 
 ```bash
-source ~/projects/claude-code-remote/.env
-curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq
+# Devbox: read token from sops-nix
+curl -s "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq
+
+# macOS: use secretspec to get token
+secretspec run -- sh -c 'curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq'
 ```
 
 ## Starting/Stopping Services
 
 ### Webhook Server
 
+**Devbox:**
 ```bash
 # Start (foreground with logs)
 cd ~/projects/claude-code-remote
-npm run webhooks:log
+devenv shell
+ccr-start npm run webhooks:log
 
 # Start (background)
-cd ~/projects/claude-code-remote
-nohup npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
+devenv shell -- ccr-start npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
 
 # Stop
 pkill -f "node.*telegram-webhook"
+```
 
-# Restart
+**macOS:**
+```bash
+# Start (foreground with logs)
+cd ~/projects/claude-code-remote
+devenv shell
+secretspec run -- npm run webhooks:log
+
+# Start (background)
+devenv shell -- secretspec run -- npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
+
+# Stop
 pkill -f "node.*telegram-webhook"
-sleep 1
-cd ~/projects/claude-code-remote && nohup npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
 ```
 
 ### Worker (Cloudflare)
@@ -103,7 +116,7 @@ Normal behavior - Durable Objects hibernate after ~60s of inactivity. The Machin
 
 1. Check Worker has the session:
    ```bash
-   curl -s https://ccr-router.jonathan-mohrbacher.workers.dev/sessions | jq
+   curl -s https://ccr-router.your-account.workers.dev/sessions | jq
    ```
 2. Check MachineAgent received command (look for `Received command` in logs)
 3. Check injection method:
@@ -141,6 +154,102 @@ find ~/.claude/runtime/sessions -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
 ```bash
 cd ~/projects/claude-code-remote
 git pull
+devenv shell
 npm install
-# Restart webhook server
+# Restart webhook server (see Starting/Stopping above)
 ```
+
+## Secret Rotation
+
+### When to Rotate
+
+- Secret leaked (GitGuardian alert, accidental commit, etc.)
+- Periodic rotation (recommended: annually)
+
+### If Leaked: Revoke First
+
+Before rotating, revoke the compromised secret at its source:
+
+| Secret | Revocation |
+|--------|------------|
+| `TELEGRAM_BOT_TOKEN` | Telegram @BotFather → /revoke → select bot |
+| `CCR_API_KEY` | No external revocation needed (just rotate) |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare Dashboard → API Tokens → Roll |
+
+### Generate New Secrets
+
+```bash
+# CCR_API_KEY (base64url, 32 chars)
+node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+
+# TELEGRAM_WEBHOOK_SECRET (hex, 64 chars)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# TELEGRAM_WEBHOOK_PATH_SECRET (hex, 32 chars)
+node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
+```
+
+### Update All Locations
+
+**Order matters** - update Worker first, then agents:
+
+#### 1. Cloudflare Worker
+
+```bash
+cd ~/projects/ccr-worker
+export CLOUDFLARE_API_TOKEN="$(cat /run/secrets/cloudflare_api_token)"
+
+echo "NEW_VALUE" | wrangler secret put CCR_API_KEY
+echo "NEW_VALUE" | wrangler secret put TELEGRAM_BOT_TOKEN
+echo "NEW_VALUE" | wrangler secret put TELEGRAM_WEBHOOK_SECRET
+
+# Verify
+wrangler secret list
+```
+
+#### 2. Devbox (sops-nix)
+
+```bash
+cd ~/projects/workstation
+SOPS_AGE_KEY_FILE=/persist/sops-age-key.txt sops secrets/devbox.yaml
+# Edit the values, save, then:
+sudo nixos-rebuild switch --flake .#devbox
+
+# Restart webhook
+pkill -f "node.*telegram-webhook"
+cd ~/projects/claude-code-remote
+devenv shell -- ccr-start npm run webhooks:log
+```
+
+#### 3. macOS (Keychain)
+
+```bash
+security add-generic-password -s secretspec -a CCR_API_KEY -w 'NEW_VALUE' -U
+security add-generic-password -s secretspec -a TELEGRAM_BOT_TOKEN -w 'NEW_VALUE' -U
+security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_SECRET -w 'NEW_VALUE' -U
+security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_PATH_SECRET -w 'NEW_VALUE' -U
+
+# Restart webhook server
+pkill -f "node.*telegram-webhook"
+cd ~/projects/claude-code-remote
+devenv shell -- secretspec run -- npm run webhooks:log
+```
+
+### Verify Recovery
+
+```bash
+# Check devbox connected
+tail -20 ~/.local/state/claude-code-remote/daemon.log | grep -E 'Authenticated|ERROR'
+
+# Check Worker health
+curl -s https://ccr-router.your-account.workers.dev/health
+
+# Test notification flow
+# In a Claude session: /test-notify
+```
+
+### Common Pitfalls
+
+- **Stale env vars**: If shell has old values cached, start a fresh shell or use `exec $SHELL`
+- **Worker propagation**: Secrets may take 30-60s to propagate after `wrangler secret put`
+- **Plain text vs secret**: Never use `[vars]` in wrangler.toml for secrets. Always `wrangler secret put`

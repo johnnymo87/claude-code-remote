@@ -14,27 +14,29 @@ Common issues and their solutions for notification and command injection problem
 ### Machine agent not connecting
 
 ```bash
-# Check logs for connection status
-npm run webhooks:log
-# Look for: [MachineAgent] [INFO] Connected to Worker as <machine-id>
+# Devbox
+devenv shell
+ccr-start npm run webhooks:log
+
+# macOS
+devenv shell
+secretspec run -- npm run webhooks:log
+
+# Look for: [MachineAgent] [INFO] Authenticated and connected as <machine-id>
 # Or errors: [MachineAgent] [ERROR] WebSocket error: ...
 ```
 
 **If not connecting:**
-1. Verify `CCR_WORKER_URL` in `.env` is correct
+1. Verify `CCR_WORKER_URL` is set correctly in secretspec.toml or your secret storage
 2. Check Worker is deployed: `curl https://your-worker.workers.dev/sessions`
 3. Ensure outbound WebSocket connections allowed (corporate firewalls)
+4. Verify `CCR_API_KEY` matches between agent and Worker
 
 ### Commands going to wrong machine
 
 Each machine needs unique `CCR_MACHINE_ID`:
-```bash
-# On devbox
-CCR_MACHINE_ID=devbox
-
-# On macOS
-CCR_MACHINE_ID=macbook
-```
+- Devbox: Hardcoded in `ccr-start` script
+- macOS: Set in Keychain via SecretSpec
 
 Check registered sessions:
 ```bash
@@ -51,7 +53,11 @@ curl https://ccr-router.your-account.workers.dev/sessions
 
 2. **Verify webhook points to Worker:**
    ```bash
-   curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq '.result.url'
+   # Devbox
+   curl "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq '.result.url'
+
+   # macOS
+   secretspec run -- sh -c 'curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq ".result.url"'
    # Should show Worker URL, not direct tunnel URL
    ```
 
@@ -74,28 +80,20 @@ If Worker fails with:
 
 This is often caused by shell escaping when setting secrets via `echo | wrangler secret put`.
 
-**Fix:** Re-set secrets using file input:
+**Fix:** Re-set secrets with proper escaping:
 ```bash
 cd ~/projects/ccr-worker
 export CLOUDFLARE_API_TOKEN="$(cat /run/secrets/cloudflare_api_token)"
 
-# Bot token (fixes 404)
-grep -o 'TELEGRAM_BOT_TOKEN=.*' ~/projects/claude-code-remote/.env | cut -d= -f2 > /tmp/secret.txt
-wrangler secret put TELEGRAM_BOT_TOKEN < /tmp/secret.txt
-rm /tmp/secret.txt
-
-# Webhook secret (fixes 401)
-grep -o 'TELEGRAM_WEBHOOK_SECRET=.*' ~/projects/claude-code-remote/.env | cut -d= -f2 > /tmp/secret.txt
-wrangler secret put TELEGRAM_WEBHOOK_SECRET < /tmp/secret.txt
-rm /tmp/secret.txt
+# Read from sops-nix on devbox
+cat /run/secrets/telegram_bot_token | wrangler secret put TELEGRAM_BOT_TOKEN
+cat /run/secrets/telegram_webhook_secret | wrangler secret put TELEGRAM_WEBHOOK_SECRET
 ```
 
 **Verify:**
 ```bash
 # Check webhook status (should show no recent errors)
-curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq '{url, last_error_message}'
-
-# Test notification (see ccr-worker README)
+curl -s "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq '{url, last_error_message}'
 ```
 
 ## Notifications Not Sending
@@ -106,7 +104,7 @@ curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq '{
 cat ~/.claude/settings.json | jq '.hooks'
 ```
 
-Should show `Stop` and `SubagentStop` hooks pointing to `claude-hook-notify.js`.
+Should show `Stop` and `SessionStart` hooks pointing to shell scripts in `~/.claude/hooks/`.
 
 If missing:
 ```bash
@@ -116,7 +114,11 @@ npm run setup
 ### Test notification manually
 
 ```bash
-node claude-hook-notify.js completed
+# Devbox
+ccr-start node claude-hook-notify.js completed
+
+# macOS
+secretspec run -- node claude-hook-notify.js completed
 ```
 
 If this works but Claude isn't triggering notifications:
@@ -127,11 +129,11 @@ If this works but Claude isn't triggering notifications:
 
 **Telegram:**
 ```bash
-# Test bot token
-curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe"
+# Test bot token (devbox)
+curl "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getMe"
 
-# Check webhook (should point to Worker or your tunnel)
-curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq
+# Check webhook
+curl "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq
 ```
 
 ## Commands Not Executing
@@ -172,6 +174,7 @@ kill -9 <PID>
 ### Missing dependencies
 
 ```bash
+devenv shell
 npm install
 ```
 
@@ -180,7 +183,7 @@ npm install
 If you see `createLogger is not a function`:
 ```bash
 git pull origin master  # Get the fix
-npm run webhooks:log
+# Then restart with ccr-start or secretspec run
 ```
 
 ## Debug Mode
@@ -188,7 +191,11 @@ npm run webhooks:log
 Enable verbose logging:
 
 ```bash
-LOG_LEVEL=debug npm run webhooks:log
+# Devbox
+LOG_LEVEL=debug ccr-start npm run webhooks:log
+
+# macOS
+LOG_LEVEL=debug secretspec run -- npm run webhooks:log
 ```
 
 Log location: `~/.local/state/claude-code-remote/daemon.log`
@@ -204,13 +211,16 @@ curl http://localhost:4731/sessions | jq
 
 ### Clear stale sessions
 
+The sessions database is at `src/data/sessions.db`. To reset:
 ```bash
 rm src/data/sessions.db
 ```
 
 Then restart services.
 
-## Systemd Service Issues (Linux)
+## NixOS Systemd Service Issues
+
+If using the systemd service (managed via workstation repo):
 
 ```bash
 # Check status
@@ -222,3 +232,5 @@ journalctl -u ccr-webhooks -f
 # Restart after config changes
 sudo systemctl restart ccr-webhooks
 ```
+
+Note: The systemd service reads secrets from `/run/secrets/*` directly.
