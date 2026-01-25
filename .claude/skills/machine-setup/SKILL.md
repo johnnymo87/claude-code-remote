@@ -9,43 +9,82 @@ Complete checklist for adding a new machine to the CCR network.
 
 ## Prerequisites
 
-- Node.js 18+ installed
+- devenv installed (provides Node.js and SecretSpec)
 - Git access to claude-code-remote repo
-- Access to shared secrets (CCR_API_KEY, Telegram tokens)
+- Access to shared secrets (see security skill)
 
 ## Step 1: Clone Repository
 
 ```bash
 git clone git@github.com:johnnymo87/claude-code-remote.git ~/projects/claude-code-remote
 cd ~/projects/claude-code-remote
+devenv shell  # Enters dev environment with Node.js, npm, etc.
 npm install
 ```
 
-## Step 2: Create Environment File
+## Step 2: Configure Secrets
 
-Create `~/projects/claude-code-remote/.env`:
+Secrets are managed via SecretSpec with platform-native storage.
 
+### Devbox (Headless NixOS)
+
+Secrets come from sops-nix, decrypted at boot to `/run/secrets/*`.
+
+**1. Add secrets to workstation repo:**
 ```bash
-# Telegram Bot Configuration
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=<your-bot-token>        # From @BotFather
-TELEGRAM_CHAT_ID=<your-chat-id>            # Your Telegram user/chat ID
-
-# Worker Routing (multi-machine setup)
-CCR_WORKER_URL=https://ccr-router.<your-account>.workers.dev
-CCR_MACHINE_ID=<unique-name>  # e.g., 'macbook', 'devbox', 'workpc'
-CCR_API_KEY=<shared-api-key>               # Same across all machines
-
-# Optional: Webhook secrets (only needed if running direct mode)
-# TELEGRAM_WEBHOOK_SECRET=your-32-byte-hex
-# TELEGRAM_WEBHOOK_PATH_SECRET=your-16-byte-hex
-# WEBHOOK_DOMAIN=ccr.yourdomain.com
+cd ~/projects/workstation
+SOPS_AGE_KEY_FILE=/persist/sops-age-key.txt sops secrets/devbox.yaml
 ```
 
-**Important:**
-- `CCR_MACHINE_ID` must be unique per machine
-- `CCR_API_KEY` is shared across all machines (authenticates with Worker)
-- Don't set `WEBHOOK_DOMAIN` when using Worker routing
+Add:
+```yaml
+ccr_api_key: <shared-api-key>
+telegram_bot_token: <from-botfather>
+telegram_webhook_secret: <32-byte-hex>
+telegram_webhook_path_secret: <16-byte-hex>
+```
+
+**2. Define secrets in NixOS config:**
+```nix
+# hosts/devbox/configuration.nix
+sops.secrets = {
+  ccr_api_key = { owner = "dev"; };
+  telegram_bot_token = { owner = "dev"; };
+  telegram_webhook_secret = { owner = "dev"; };
+  telegram_webhook_path_secret = { owner = "dev"; };
+};
+```
+
+**3. Rebuild NixOS:**
+```bash
+sudo nixos-rebuild switch --flake .#devbox
+```
+
+**4. Create devenv.local.yaml (gitignored):**
+```yaml
+secretspec:
+  enable: true
+  provider: env
+  profile: default
+```
+
+### macOS
+
+Secrets stored in Keychain via SecretSpec keyring provider.
+
+**Store secrets:**
+```bash
+security add-generic-password -s secretspec -a CCR_API_KEY -w '<value>' -U
+security add-generic-password -s secretspec -a TELEGRAM_BOT_TOKEN -w '<value>' -U
+security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_SECRET -w '<value>' -U
+security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_PATH_SECRET -w '<value>' -U
+security add-generic-password -s secretspec -a CCR_MACHINE_ID -w 'macbook' -U
+```
+
+**Verify:**
+```bash
+secretspec check
+```
 
 ## Step 3: Set Up Claude Hooks
 
@@ -83,9 +122,20 @@ Or manually add to `~/.claude/settings.json`:
 
 ## Step 4: Start Webhook Server
 
+### Devbox
+
 ```bash
 cd ~/projects/claude-code-remote
-npm run webhooks:log
+devenv shell
+ccr-start npm run webhooks:log
+```
+
+### macOS
+
+```bash
+cd ~/projects/claude-code-remote
+devenv shell
+secretspec run -- npm run webhooks:log
 ```
 
 **Verify connection:**
@@ -118,15 +168,19 @@ npm run webhooks:log
 - Verify session is registered: check `/sessions` endpoint on Worker
 - Ensure hooks are configured in `~/.claude/settings.json`
 
-## Environment Variables Reference
+## Secrets Reference
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `TELEGRAM_BOT_TOKEN` | Yes | Bot token from @BotFather |
-| `TELEGRAM_CHAT_ID` | Yes | Your Telegram chat ID |
-| `CCR_WORKER_URL` | Yes* | Worker URL for multi-machine |
-| `CCR_MACHINE_ID` | Yes* | Unique machine identifier |
-| `CCR_API_KEY` | Yes* | Shared API key for Worker auth |
-| `WEBHOOK_DOMAIN` | No | Only for direct mode (no Worker) |
+See `secretspec.toml` for full list. Key secrets:
 
-*Required for multi-machine setup (recommended)
+| Secret | Description |
+|--------|-------------|
+| `CCR_API_KEY` | Shared key for Worker auth (same across all machines) |
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
+| `TELEGRAM_WEBHOOK_SECRET` | 32-byte hex for webhook validation |
+| `TELEGRAM_WEBHOOK_PATH_SECRET` | 16-byte hex for URL obfuscation |
+| `CCR_MACHINE_ID` | Unique machine name (e.g., 'devbox', 'macbook') |
+
+Config defaults are in `secretspec.toml`:
+- `TELEGRAM_CHAT_ID` - Your Telegram user ID
+- `CCR_WORKER_URL` - Worker URL for multi-machine routing
+- `TELEGRAM_WEBHOOK_PORT` - Default 4731
