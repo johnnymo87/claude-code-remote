@@ -55,3 +55,4 @@ src/data/
 # Devenv
 .devenv/
 .devenv.flake.nix
+devenv.local.yaml
