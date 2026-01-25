@@ -28,13 +28,13 @@ Create `~/projects/claude-code-remote/.env`:
 ```bash
 # Telegram Bot Configuration
 TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=7305572211:AAH8S7yw3GjFIYOofX5-eKxRN3XzUsDTJN0
-TELEGRAM_CHAT_ID=8248645256
+TELEGRAM_BOT_TOKEN=<your-bot-token>        # From @BotFather
+TELEGRAM_CHAT_ID=<your-chat-id>            # Your Telegram user/chat ID
 
 # Worker Routing (multi-machine setup)
-CCR_WORKER_URL=https://ccr-router.jonathan-mohrbacher.workers.dev
+CCR_WORKER_URL=https://ccr-router.<your-account>.workers.dev
 CCR_MACHINE_ID=<unique-name>  # e.g., 'macbook', 'devbox', 'workpc'
-CCR_API_KEY=OOytSFvLS0Yd5sjMwU2JpJ9PbMgqSE9g
+CCR_API_KEY=<shared-api-key>               # Same across all machines
 
 # Optional: Webhook secrets (only needed if running direct mode)
 # TELEGRAM_WEBHOOK_SECRET=your-32-byte-hex
