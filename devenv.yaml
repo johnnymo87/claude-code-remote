@@ -1,3 +1,8 @@
 inputs:
   nixpkgs:
     url: github:NixOS/nixpkgs/nixos-unstable
+
+secretspec:
+  enable: true
+  provider: keyring
+  profile: default
