@@ -5,9 +5,18 @@ Control Claude Code remotely via Telegram notifications.
 ## Quick Start
 
 ```bash
+devenv shell         # Enter dev environment
 npm install
-npm run setup        # Configure Telegram, set up hooks
-npm run webhooks:log # Start services
+npm run setup        # Configure hooks
+```
+
+**Start webhook server:**
+```bash
+# Devbox (headless NixOS)
+ccr-start npm run webhooks:log
+
+# macOS
+secretspec run -- npm run webhooks:log
 ```
 
 **For reply commands**, choose one:
@@ -30,7 +39,8 @@ For multi-machine setups, a Cloudflare Worker routes replies to the correct mach
 | [architecture](.claude/skills/architecture/SKILL.md) | System design, notification flow, project structure |
 | [configuring-notifications](.claude/skills/configuring-notifications/SKILL.md) | Setting up Telegram (Worker vs Direct mode) |
 | [machine-setup](.claude/skills/machine-setup/SKILL.md) | Adding a new machine to the CCR network |
-| [operations](.claude/skills/operations/SKILL.md) | Logs, restarts, health checks, runbook |
+| [operations](.claude/skills/operations/SKILL.md) | Logs, restarts, health checks, secret rotation |
+| [security](.claude/skills/security/SKILL.md) | Secret management architecture, token flow |
 | [hooks](.claude/skills/hooks/SKILL.md) | Claude Code hooks (SessionStart, Stop) |
 | [troubleshooting](.claude/skills/troubleshooting/SKILL.md) | Debugging common issues |
 
@@ -40,17 +50,18 @@ For multi-machine setups, a Cloudflare Worker routes replies to the correct mach
 |---------|-------------|
 | [/test-notify](.claude/commands/test-notify.md) | Test Telegram notifications |
 
-## Key Environment Variables
+## Secrets Management
 
-```bash
-# Telegram
-TELEGRAM_BOT_TOKEN=your-bot-token
-TELEGRAM_CHAT_ID=your-chat-id
+Secrets are managed via **SecretSpec** with platform-native storage:
 
-# Worker routing (multi-machine)
-CCR_WORKER_URL=https://ccr-router.your-account.workers.dev
-CCR_MACHINE_ID=devbox
+- **Devbox**: sops-nix (`/run/secrets/*`) + env provider
+- **macOS**: Keychain + keyring provider
+- **Worker**: Cloudflare secrets (`wrangler secret put`)
 
-# Direct mode (single-machine, alternative to Worker)
-WEBHOOK_DOMAIN=ccr.yourdomain.com
-```
+See `secretspec.toml` for secret definitions and `security` skill for details.
+
+Key secrets:
+- `CCR_API_KEY` - Shared auth key (all machines + Worker)
+- `TELEGRAM_BOT_TOKEN` - From @BotFather
+- `TELEGRAM_WEBHOOK_SECRET` - Webhook validation
+- `CCR_MACHINE_ID` - Unique per machine
