@@ -138,7 +138,7 @@ class TelegramWebhookHandler {
         const message = [
             `${emoji} *${event}*: ${this._escapeMarkdown(displayLabel)}`,
             '',
-            this._escapeMarkdown(summary),
+            summary,  // Don't escape - Claude's output uses intentional Markdown formatting
             '',
             `📂 \`${cwdShort}\``,
             '',
