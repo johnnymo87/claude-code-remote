@@ -9,49 +9,39 @@ Complete checklist for adding a new machine to the CCR network.
 
 ## Prerequisites
 
-- devenv installed (provides Node.js and SecretSpec)
+- devenv installed (provides Node.js and 1Password CLI)
 - Git access to claude-code-remote repo
-- Access to shared secrets (see security skill)
+- 1Password account with access to Automation vault (see security skill)
 
 ## Step 1: Clone Repository
 
 ```bash
 git clone git@github.com:johnnymo87/claude-code-remote.git ~/projects/claude-code-remote
 cd ~/projects/claude-code-remote
-devenv shell  # Enters dev environment with Node.js, npm, etc.
+devenv shell  # Enters dev environment with Node.js, npm, op CLI
 npm install
 ```
 
 ## Step 2: Configure Secrets
 
-Secrets are managed via SecretSpec with platform-native storage.
+Secrets are managed via 1Password with a service account for headless access.
 
 ### Devbox (Headless NixOS)
 
-Secrets come from sops-nix, decrypted at boot to `/run/secrets/*`.
+The service account token is stored in sops-nix and auto-exported by devenv.
 
-**1. Add secrets to workstation repo:**
+**1. Add service account token to workstation repo:**
 ```bash
 cd ~/projects/workstation
-SOPS_AGE_KEY_FILE=/persist/sops-age-key.txt sops secrets/devbox.yaml
+sudo SOPS_AGE_KEY_FILE=/persist/sops-age-key.txt nix-shell -p sops --run \
+  'sops set secrets/devbox.yaml '"'"'["op_service_account_token"] "<your-token>"'"'"''
 ```
 
-Add:
-```yaml
-ccr_api_key: <shared-api-key>
-telegram_bot_token: <from-botfather>
-telegram_webhook_secret: <32-byte-hex>
-telegram_webhook_path_secret: <16-byte-hex>
-```
-
-**2. Define secrets in NixOS config:**
+**2. Define secret in NixOS config:**
 ```nix
 # hosts/devbox/configuration.nix
 sops.secrets = {
-  ccr_api_key = { owner = "dev"; };
-  telegram_bot_token = { owner = "dev"; };
-  telegram_webhook_secret = { owner = "dev"; };
-  telegram_webhook_path_secret = { owner = "dev"; };
+  op_service_account_token = { owner = "dev"; mode = "0400"; };
 };
 ```
 
@@ -62,28 +52,39 @@ sudo nixos-rebuild switch --flake .#devbox
 
 **4. Create devenv.local.yaml (gitignored):**
 ```yaml
+# Disable secretspec - using 1Password instead
 secretspec:
-  enable: true
-  provider: env
-  profile: default
+  enable: false
+```
+
+**5. Verify:**
+```bash
+cd ~/projects/claude-code-remote
+direnv reload
+echo "Token set: $([ -n \"$OP_SERVICE_ACCOUNT_TOKEN\" ] && echo 'yes' || echo 'no')"
+op whoami
 ```
 
 ### macOS
 
-Secrets stored in Keychain via SecretSpec keyring provider.
+Two options for 1Password auth:
 
-**Store secrets:**
+**Option A: Service Account (headless, same as devbox)**
 ```bash
-security add-generic-password -s secretspec -a CCR_API_KEY -w '<value>' -U
-security add-generic-password -s secretspec -a TELEGRAM_BOT_TOKEN -w '<value>' -U
-security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_SECRET -w '<value>' -U
-security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_PATH_SECRET -w '<value>' -U
-security add-generic-password -s secretspec -a CCR_MACHINE_ID -w 'macbook' -U
+export OP_SERVICE_ACCOUNT_TOKEN="<your-token>"
+# Add to your shell profile (~/.zshrc or ~/.bashrc)
+```
+
+**Option B: Desktop App (interactive)**
+```bash
+# op CLI will use 1Password app for auth
+# No environment variable needed
+op signin  # First time setup
 ```
 
 **Verify:**
 ```bash
-secretspec check
+op run --env-file=.env.1password -- env | grep CCR_API_KEY
 ```
 
 ## Step 3: Set Up Claude Hooks
@@ -122,20 +123,12 @@ Or manually add to `~/.claude/settings.json`:
 
 ## Step 4: Start Webhook Server
 
-### Devbox
+Same command on all platforms:
 
 ```bash
 cd ~/projects/claude-code-remote
 devenv shell
-ccr-start npm run webhooks:log
-```
-
-### macOS
-
-```bash
-cd ~/projects/claude-code-remote
-devenv shell
-secretspec run -- npm run webhooks:log
+op run --env-file=.env.1password -- npm run webhooks:log
 ```
 
 **Verify connection:**
@@ -156,8 +149,17 @@ secretspec run -- npm run webhooks:log
 
 ## Troubleshooting
 
+### "op: command not found"
+- Ensure you're in devenv shell
+- Run `direnv reload` if using direnv
+
+### "Could not resolve item"
+- Check 1Password vault name matches (Automation)
+- Verify service account has access to the vault
+- Check item name matches (ccr-secrets)
+
 ### "Authentication failed"
-- Verify `CCR_API_KEY` matches the Worker secret
+- Verify `CCR_API_KEY` in 1Password matches the Worker secret
 - Check `CCR_WORKER_URL` is correct
 
 ### "Machine not connected"
@@ -170,7 +172,7 @@ secretspec run -- npm run webhooks:log
 
 ## Secrets Reference
 
-See `secretspec.toml` for full list. Key secrets:
+See `.env.1password` for secret references. Key secrets:
 
 | Secret | Description |
 |--------|-------------|
@@ -178,9 +180,6 @@ See `secretspec.toml` for full list. Key secrets:
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
 | `TELEGRAM_WEBHOOK_SECRET` | 32-byte hex for webhook validation |
 | `TELEGRAM_WEBHOOK_PATH_SECRET` | 16-byte hex for URL obfuscation |
-| `CCR_MACHINE_ID` | Unique machine name (e.g., 'devbox', 'macbook') |
+| `CCR_MACHINE_ID` | Set in devenv.nix (devbox) or environment (macOS) |
 
-Config defaults are in `secretspec.toml`:
-- `TELEGRAM_CHAT_ID` - Your Telegram user ID
-- `CCR_WORKER_URL` - Worker URL for multi-machine routing
-- `TELEGRAM_WEBHOOK_PORT` - Default 4731
+Config is in `secretspec.toml` (defaults) and can be overridden via environment.

@@ -43,40 +43,23 @@ curl -s https://ccr-router.your-account.workers.dev/sessions | jq
 ### Telegram Webhook
 
 ```bash
-# Devbox: read token from sops-nix
-curl -s "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq
-
-# macOS: use secretspec to get token
-secretspec run -- sh -c 'curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq'
+# Using 1Password (all platforms)
+op run --env-file=.env.1password -- sh -c 'curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq'
 ```
 
 ## Starting/Stopping Services
 
 ### Webhook Server
 
-**Devbox:**
+**All platforms (same command):**
 ```bash
 # Start (foreground with logs)
 cd ~/projects/claude-code-remote
 devenv shell
-ccr-start npm run webhooks:log
+op run --env-file=.env.1password -- npm run webhooks:log
 
 # Start (background)
-devenv shell -- ccr-start npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
-
-# Stop
-pkill -f "node.*telegram-webhook"
-```
-
-**macOS:**
-```bash
-# Start (foreground with logs)
-cd ~/projects/claude-code-remote
-devenv shell
-secretspec run -- npm run webhooks:log
-
-# Start (background)
-devenv shell -- secretspec run -- npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
+devenv shell -- op run --env-file=.env.1password -- npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
 
 # Stop
 pkill -f "node.*telegram-webhook"
@@ -174,6 +157,7 @@ Before rotating, revoke the compromised secret at its source:
 |--------|------------|
 | `TELEGRAM_BOT_TOKEN` | Telegram @BotFather → /revoke → select bot |
 | `CCR_API_KEY` | No external revocation needed (just rotate) |
+| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password → Settings → Service Accounts → Revoke |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare Dashboard → API Tokens → Roll |
 
 ### Generate New Secrets
@@ -191,7 +175,7 @@ node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
 
 ### Update All Locations
 
-**Order matters** - update Worker first, then agents:
+**Order matters** - update Worker first, then 1Password, then restart agents:
 
 #### 1. Cloudflare Worker
 
@@ -207,32 +191,25 @@ echo "NEW_VALUE" | wrangler secret put TELEGRAM_WEBHOOK_SECRET
 wrangler secret list
 ```
 
-#### 2. Devbox (sops-nix)
+#### 2. 1Password (single source of truth)
 
 ```bash
-cd ~/projects/workstation
-SOPS_AGE_KEY_FILE=/persist/sops-age-key.txt sops secrets/devbox.yaml
-# Edit the values, save, then:
-sudo nixos-rebuild switch --flake .#devbox
-
-# Restart webhook
-pkill -f "node.*telegram-webhook"
-cd ~/projects/claude-code-remote
-devenv shell -- ccr-start npm run webhooks:log
+# Update secrets in 1Password via web UI or CLI
+op item edit ccr-secrets --vault=Automation \
+  "CCR_API_KEY=NEW_VALUE" \
+  "TELEGRAM_BOT_TOKEN=NEW_VALUE" \
+  "TELEGRAM_WEBHOOK_SECRET=NEW_VALUE" \
+  "TELEGRAM_WEBHOOK_PATH_SECRET=NEW_VALUE"
 ```
 
-#### 3. macOS (Keychain)
+#### 3. Restart Services
 
 ```bash
-security add-generic-password -s secretspec -a CCR_API_KEY -w 'NEW_VALUE' -U
-security add-generic-password -s secretspec -a TELEGRAM_BOT_TOKEN -w 'NEW_VALUE' -U
-security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_SECRET -w 'NEW_VALUE' -U
-security add-generic-password -s secretspec -a TELEGRAM_WEBHOOK_PATH_SECRET -w 'NEW_VALUE' -U
-
-# Restart webhook server
+# Restart webhook server (picks up new secrets from 1Password)
 pkill -f "node.*telegram-webhook"
 cd ~/projects/claude-code-remote
-devenv shell -- secretspec run -- npm run webhooks:log
+devenv shell
+op run --env-file=.env.1password -- npm run webhooks:log
 ```
 
 ### Verify Recovery
@@ -250,6 +227,6 @@ curl -s https://ccr-router.your-account.workers.dev/health
 
 ### Common Pitfalls
 
-- **Stale env vars**: If shell has old values cached, start a fresh shell or use `exec $SHELL`
+- **Stale env vars**: op run always fetches fresh - no caching issues
 - **Worker propagation**: Secrets may take 30-60s to propagate after `wrangler secret put`
 - **Plain text vs secret**: Never use `[vars]` in wrangler.toml for secrets. Always `wrangler secret put`

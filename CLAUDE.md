@@ -5,18 +5,14 @@ Control Claude Code remotely via Telegram notifications.
 ## Quick Start
 
 ```bash
-devenv shell         # Enter dev environment
+devenv shell         # Enter dev environment (auto-configures 1Password)
 npm install
 npm run setup        # Configure hooks
 ```
 
 **Start webhook server:**
 ```bash
-# Devbox - secrets auto-loaded from sops-nix on shell entry
-npm run webhooks:log
-
-# macOS - secretspec injects from Keychain
-secretspec run -- npm run webhooks:log
+op run --env-file=.env.1password -- npm run webhooks:log
 ```
 
 **For reply commands**, choose one:
@@ -52,16 +48,22 @@ For multi-machine setups, a Cloudflare Worker routes replies to the correct mach
 
 ## Secrets Management
 
-Secrets are managed via **SecretSpec** with platform-native storage:
+Secrets are managed via **1Password** with a service account for headless access:
 
-- **Devbox**: sops-nix (`/run/secrets/*`) + env provider
-- **macOS**: Keychain + keyring provider
+```
+1Password (Automation vault)
+  └── ccr-secrets item
+       ├── CCR_API_KEY
+       ├── TELEGRAM_BOT_TOKEN
+       ├── TELEGRAM_WEBHOOK_SECRET
+       └── TELEGRAM_WEBHOOK_PATH_SECRET
+
+sops-nix (bootstrap only)
+  └── OP_SERVICE_ACCOUNT_TOKEN
+```
+
+- **Devbox**: Token from sops-nix, secrets from 1Password via `op run`
+- **macOS**: 1Password desktop app or service account
 - **Worker**: Cloudflare secrets (`wrangler secret put`)
 
-See `secretspec.toml` for secret definitions and `security` skill for details.
-
-Key secrets:
-- `CCR_API_KEY` - Shared auth key (all machines + Worker)
-- `TELEGRAM_BOT_TOKEN` - From @BotFather
-- `TELEGRAM_WEBHOOK_SECRET` - Webhook validation
-- `CCR_MACHINE_ID` - Unique per machine
+See `.env.1password` for secret references and `security` skill for architecture.
