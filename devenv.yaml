@@ -4,7 +4,7 @@ inputs:
 
 allowUnfree: true
 
+# secretspec disabled - using 1Password for secrets management
+# See .env.1password for secret references, secretspec.toml for documentation
 secretspec:
-  enable: true
-  provider: keyring
-  profile: default
+  enable: false

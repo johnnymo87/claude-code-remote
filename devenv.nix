@@ -20,7 +20,7 @@
       export OP_SERVICE_ACCOUNT_TOKEN="$(< /run/secrets/op_service_account_token)"
       export CCR_MACHINE_ID="devbox"
     elif command -v security &>/dev/null; then
-      # macOS: read from Keychain
+      # macOS: optionally read from Keychain (or use desktop app auth)
       _token=$(security find-generic-password -s "op-service-account" -a "OP_SERVICE_ACCOUNT_TOKEN" -w 2>/dev/null || true)
       if [ -n "$_token" ]; then
         export OP_SERVICE_ACCOUNT_TOKEN="$_token"
@@ -32,17 +32,14 @@
     echo "Claude Code Remote - Node $(node --version)"
     if [ -n "$OP_SERVICE_ACCOUNT_TOKEN" ]; then
       echo "1Password service account configured (''${CCR_MACHINE_ID})"
-      echo ""
-      echo "Start webhook server:"
-      echo "  op run --env-file=.env.1password -- npm run webhooks:log"
+    elif command -v security &>/dev/null; then
+      echo "1Password: using desktop app auth (run 'op signin' if needed)"
+      export CCR_MACHINE_ID="''${CCR_MACHINE_ID:-macbook}"
     else
-      echo ""
-      echo "1Password not configured. To set up:"
-      echo "  # macOS: Store token in Keychain"
-      echo "  security add-generic-password -s 'op-service-account' -a 'OP_SERVICE_ACCOUNT_TOKEN' -w '<token>' -U"
-      echo ""
-      echo "  # Then start webhook server:"
-      echo "  op run --env-file=.env.1password -- npm run webhooks:log"
+      echo "1Password: not configured"
     fi
+    echo ""
+    echo "Start webhook server:"
+    echo "  op run --env-file=.env.1password -- npm run webhooks:log"
   '';
 }

@@ -67,11 +67,13 @@ op whoami
 
 ### macOS
 
-Store the service account token in Keychain (same pattern as devbox with sops-nix):
+Uses 1Password desktop app for authentication (no token to manage):
 
-**1. Store token in Keychain:**
+**1. Sign into 1Password CLI (one-time):**
 ```bash
-security add-generic-password -s 'op-service-account' -a 'OP_SERVICE_ACCOUNT_TOKEN' -w '<your-token>' -U
+cd ~/projects/claude-code-remote
+devenv shell
+op signin
 ```
 
 **2. Optionally set machine ID** (defaults to "macbook"):
@@ -80,21 +82,12 @@ security add-generic-password -s 'op-service-account' -a 'OP_SERVICE_ACCOUNT_TOK
 export CCR_MACHINE_ID="macbook-pro"
 ```
 
-**3. Create devenv.local.yaml (gitignored):**
-```yaml
-# Disable secretspec - using 1Password instead
-secretspec:
-  enable: false
-```
-
-**4. Verify:**
+**3. Verify:**
 ```bash
-cd ~/projects/claude-code-remote
-direnv reload  # or: devenv shell
-# Should see: "1Password service account configured (macbook)"
-
 op run --env-file=.env.1password -- env | grep CCR_API_KEY
 ```
+
+That's it - the CLI authenticates via the desktop app. No service account token needed.
 
 ## Step 3: Set Up Claude Hooks
 
