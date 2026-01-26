@@ -50,14 +50,7 @@ sops.secrets = {
 sudo nixos-rebuild switch --flake .#devbox
 ```
 
-**4. Create devenv.local.yaml (gitignored):**
-```yaml
-# Disable secretspec - using 1Password instead
-secretspec:
-  enable: false
-```
-
-**5. Verify:**
+**4. Verify:**
 ```bash
 cd ~/projects/claude-code-remote
 direnv reload
@@ -183,5 +176,3 @@ See `.env.1password` for secret references. Key secrets:
 | `TELEGRAM_WEBHOOK_SECRET` | 32-byte hex for webhook validation |
 | `TELEGRAM_WEBHOOK_PATH_SECRET` | 16-byte hex for URL obfuscation |
 | `CCR_MACHINE_ID` | Set in devenv.nix (devbox) or environment (macOS) |
-
-Config is in `secretspec.toml` (defaults) and can be overridden via environment.

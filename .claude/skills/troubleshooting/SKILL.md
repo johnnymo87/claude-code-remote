@@ -14,29 +14,24 @@ Common issues and their solutions for notification and command injection problem
 ### Machine agent not connecting
 
 ```bash
-# Devbox
 devenv shell
-ccr-start npm run webhooks:log
-
-# macOS
-devenv shell
-secretspec run -- npm run webhooks:log
+op run --env-file=.env.1password -- npm run webhooks:log
 
 # Look for: [MachineAgent] [INFO] Authenticated and connected as <machine-id>
 # Or errors: [MachineAgent] [ERROR] WebSocket error: ...
 ```
 
 **If not connecting:**
-1. Verify `CCR_WORKER_URL` is set correctly in secretspec.toml or your secret storage
+1. Verify `CCR_WORKER_URL` in `.env.1password` or environment
 2. Check Worker is deployed: `curl https://your-worker.workers.dev/sessions`
 3. Ensure outbound WebSocket connections allowed (corporate firewalls)
-4. Verify `CCR_API_KEY` matches between agent and Worker
+4. Verify `CCR_API_KEY` matches between agent and Worker (check 1Password)
 
 ### Commands going to wrong machine
 
 Each machine needs unique `CCR_MACHINE_ID`:
-- Devbox: Hardcoded in `ccr-start` script
-- macOS: Set in Keychain via SecretSpec
+- Devbox: Set in devenv.nix (`export CCR_MACHINE_ID="devbox"`)
+- macOS: Set in environment or defaults to "macbook"
 
 Check registered sessions:
 ```bash
@@ -53,11 +48,7 @@ curl https://ccr-router.your-account.workers.dev/sessions
 
 2. **Verify webhook points to Worker:**
    ```bash
-   # Devbox
-   curl "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq '.result.url'
-
-   # macOS
-   secretspec run -- sh -c 'curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq ".result.url"'
+   op run --env-file=.env.1password -- sh -c 'curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq ".result.url"'
    # Should show Worker URL, not direct tunnel URL
    ```
 
@@ -85,15 +76,14 @@ This is often caused by shell escaping when setting secrets via `echo | wrangler
 cd ~/projects/ccr-worker
 export CLOUDFLARE_API_TOKEN="$(cat /run/secrets/cloudflare_api_token)"
 
-# Read from sops-nix on devbox
-cat /run/secrets/telegram_bot_token | wrangler secret put TELEGRAM_BOT_TOKEN
-cat /run/secrets/telegram_webhook_secret | wrangler secret put TELEGRAM_WEBHOOK_SECRET
+# Read from 1Password
+op run --env-file=.env.1password -- sh -c 'echo "$TELEGRAM_BOT_TOKEN" | wrangler secret put TELEGRAM_BOT_TOKEN'
+op run --env-file=.env.1password -- sh -c 'echo "$TELEGRAM_WEBHOOK_SECRET" | wrangler secret put TELEGRAM_WEBHOOK_SECRET'
 ```
 
 **Verify:**
 ```bash
-# Check webhook status (should show no recent errors)
-curl -s "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq '{url, last_error_message}'
+op run --env-file=.env.1password -- sh -c 'curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq "{url, last_error_message}"'
 ```
 
 ## Notifications Not Sending
@@ -114,11 +104,7 @@ npm run setup
 ### Test notification manually
 
 ```bash
-# Devbox
-ccr-start node claude-hook-notify.js completed
-
-# macOS
-secretspec run -- node claude-hook-notify.js completed
+op run --env-file=.env.1password -- node claude-hook-notify.js completed
 ```
 
 If this works but Claude isn't triggering notifications:
@@ -129,11 +115,11 @@ If this works but Claude isn't triggering notifications:
 
 **Telegram:**
 ```bash
-# Test bot token (devbox)
-curl "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getMe"
+# Test bot token
+op run --env-file=.env.1password -- sh -c 'curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe"'
 
 # Check webhook
-curl "https://api.telegram.org/bot$(cat /run/secrets/telegram_bot_token)/getWebhookInfo" | jq
+op run --env-file=.env.1password -- sh -c 'curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq'
 ```
 
 ## Commands Not Executing
@@ -183,7 +169,8 @@ npm install
 If you see `createLogger is not a function`:
 ```bash
 git pull origin master  # Get the fix
-# Then restart with ccr-start or secretspec run
+# Then restart webhook server
+op run --env-file=.env.1password -- npm run webhooks:log
 ```
 
 ## Debug Mode
@@ -191,11 +178,7 @@ git pull origin master  # Get the fix
 Enable verbose logging:
 
 ```bash
-# Devbox
-LOG_LEVEL=debug ccr-start npm run webhooks:log
-
-# macOS
-LOG_LEVEL=debug secretspec run -- npm run webhooks:log
+LOG_LEVEL=debug op run --env-file=.env.1password -- npm run webhooks:log
 ```
 
 Log location: `~/.local/state/claude-code-remote/daemon.log`
@@ -233,4 +216,4 @@ journalctl -u ccr-webhooks -f
 sudo systemctl restart ccr-webhooks
 ```
 
-Note: The systemd service reads secrets from `/run/secrets/*` directly.
+Note: The systemd service reads secrets via 1Password service account.

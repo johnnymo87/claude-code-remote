@@ -3,8 +3,3 @@ inputs:
     url: github:NixOS/nixpkgs/nixos-unstable
 
 allowUnfree: true
-
-# secretspec disabled - using 1Password for secrets management
-# See .env.1password for secret references, secretspec.toml for documentation
-secretspec:
-  enable: false
