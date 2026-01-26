@@ -67,23 +67,32 @@ op whoami
 
 ### macOS
 
-Two options for 1Password auth:
+Store the service account token in Keychain (same pattern as devbox with sops-nix):
 
-**Option A: Service Account (headless, same as devbox)**
+**1. Store token in Keychain:**
 ```bash
-export OP_SERVICE_ACCOUNT_TOKEN="<your-token>"
-# Add to your shell profile (~/.zshrc or ~/.bashrc)
+security add-generic-password -s 'op-service-account' -a 'OP_SERVICE_ACCOUNT_TOKEN' -w '<your-token>' -U
 ```
 
-**Option B: Desktop App (interactive)**
+**2. Optionally set machine ID** (defaults to "macbook"):
 ```bash
-# op CLI will use 1Password app for auth
-# No environment variable needed
-op signin  # First time setup
+# Add to ~/.zshrc or ~/.bashrc if you want a different name
+export CCR_MACHINE_ID="macbook-pro"
 ```
 
-**Verify:**
+**3. Create devenv.local.yaml (gitignored):**
+```yaml
+# Disable secretspec - using 1Password instead
+secretspec:
+  enable: false
+```
+
+**4. Verify:**
 ```bash
+cd ~/projects/claude-code-remote
+direnv reload  # or: devenv shell
+# Should see: "1Password service account configured (macbook)"
+
 op run --env-file=.env.1password -- env | grep CCR_API_KEY
 ```
 
