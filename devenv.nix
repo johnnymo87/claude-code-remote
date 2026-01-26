@@ -32,12 +32,25 @@
   '';
 
   enterShell = ''
+    # On devbox, export secrets from sops-nix
+    if [ -f /run/secrets/ccr_api_key ]; then
+      export CCR_API_KEY="$(< /run/secrets/ccr_api_key)"
+      export TELEGRAM_BOT_TOKEN="$(< /run/secrets/telegram_bot_token)"
+      export TELEGRAM_WEBHOOK_SECRET="$(< /run/secrets/telegram_webhook_secret)"
+      export TELEGRAM_WEBHOOK_PATH_SECRET="$(< /run/secrets/telegram_webhook_path_secret)"
+      export CCR_MACHINE_ID="devbox"
+    fi
+
     echo "Claude Code Remote - Node $(node --version)"
-    echo ""
-    echo "Start webhook server:"
-    echo "  ccr-start node start-telegram-webhook.js"
-    echo ""
-    echo "Or with npm:"
-    echo "  ccr-start npm run webhooks:log"
+    if [ -f /run/secrets/ccr_api_key ]; then
+      echo "Secrets loaded from sops-nix"
+      echo ""
+      echo "Start webhook server:"
+      echo "  npm run webhooks:log"
+    else
+      echo ""
+      echo "Start webhook server (macOS):"
+      echo "  secretspec run -- npm run webhooks:log"
+    fi
   '';
 }

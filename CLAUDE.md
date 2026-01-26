@@ -12,10 +12,10 @@ npm run setup        # Configure hooks
 
 **Start webhook server:**
 ```bash
-# Devbox (headless NixOS)
-ccr-start npm run webhooks:log
+# Devbox - secrets auto-loaded from sops-nix on shell entry
+npm run webhooks:log
 
-# macOS
+# macOS - secretspec injects from Keychain
 secretspec run -- npm run webhooks:log
 ```
 
