@@ -218,11 +218,12 @@ class TelegramWebhookHandler {
 
     /**
      * Escape special characters for Telegram basic Markdown
-     * Only escapes: _ * ` [
+     * Only escapes: _ * [
+     * Note: Backticks (`) are NOT escaped - they're used for inline code
      */
     _escapeMarkdown(text) {
         if (!text) return '';
-        return text.replace(/[_*`[]/g, '\\$&');
+        return text.replace(/[_*[]/g, '\\$&');
     }
 
     /**
