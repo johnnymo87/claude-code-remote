@@ -97,6 +97,33 @@ class TelegramProvider extends ChatProvider {
     });
   }
 
+  /**
+   * Send an initial draft message (for streaming).
+   * @param {string} channelId
+   * @param {string} initialText
+   * @returns {Promise<{messageId: number|null}>}
+   */
+  async sendDraft(channelId, initialText) {
+    const response = await this._apiCall('sendMessage', {
+      chat_id: channelId,
+      text: initialText,
+      parse_mode: 'Markdown',
+    });
+    return { messageId: response?.result?.message_id || null };
+  }
+
+  /**
+   * Update a draft message with new content.
+   * Rate limit: Telegram allows ~30 edits/sec per chat.
+   * @param {string} channelId
+   * @param {number} messageId
+   * @param {string} newText
+   * @returns {Promise<boolean>}
+   */
+  async updateDraft(channelId, messageId, newText) {
+    return this.editMessage(channelId, messageId, newText);
+  }
+
   async editMessage(channelId, messageId, newText) {
     try {
       await this._apiCall('editMessageText', {
