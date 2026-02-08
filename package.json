@@ -5,9 +5,11 @@
   "main": "hook-notify.js",
   "scripts": {
     "setup": "node setup.js",
+    "start": "node start-server.js",
+    "webhooks": "node start-server.js",
+    "webhooks:log": "mkdir -p ~/.local/state/claude-code-remote && node start-server.js 2>&1 | tee ~/.local/state/claude-code-remote/daemon.log",
     "telegram": "node start-telegram-webhook.js",
-    "webhooks": "node start-all-webhooks.js",
-    "webhooks:log": "mkdir -p ~/.local/state/claude-code-remote && node start-all-webhooks.js 2>&1 | tee ~/.local/state/claude-code-remote/daemon.log",
+    "telegram:log": "node start-telegram-webhook.js | npx pino-pretty",
     "test": "vitest run",
     "test:watch": "vitest"
   },
