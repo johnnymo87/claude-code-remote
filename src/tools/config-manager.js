@@ -252,25 +252,7 @@ class ConfigurationManager {
 
     async testNotifications() {
         console.log('\n=== Test Notifications ===');
-        
-        try {
-            const Notifier = require('../core/notifier');
-            const notifier = new Notifier(this.config);
-            await notifier.initializeChannels();
-            
-            console.log('Sending task completion notification...');
-            await notifier.notify('completed', { test: true });
-            
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            console.log('Sending waiting input notification...');
-            await notifier.notify('waiting', { test: true });
-            
-            console.log('✅ Test completed');
-        } catch (error) {
-            console.error('❌ Test failed:', error.message);
-        }
-        
+        console.log('Legacy Notifier has been removed. Use /test-notify command instead.');
         await this.question('\nPress Enter to continue...');
     }
 
