@@ -80,7 +80,27 @@ Requires tunnel (Cloudflare Tunnel, ngrok) exposing port 4731.
 3. **You reply** → Webhook received at CCR
 4. **Command injected** → Into active Claude session
 
+## Internal Architecture
+
+The server uses a two-axis abstraction to decouple platform from agent:
+
+```
+ChatProvider (messaging platform)     AgentBackend (agent interaction)
+  ├── TelegramProvider                  └── ClaudeCodeBackend (nvim/tmux)
+  └── (future: Slack, Discord)
+                    │                              │
+                    └──────── CommandRouter ────────┘
+                              (orchestrator)
+```
+
+- **ChatProvider** (`src/providers/chat-provider.js`): Abstract interface for sending notifications, receiving commands. Platform-specific subclasses handle API details.
+- **AgentBackend** (`src/backends/agent-backend.js`): Abstract interface for injecting commands into agent sessions. `ClaudeCodeBackend` wraps the tmux/nvim injector.
+- **CommandRouter** (`src/core/command-router.js`): Bridges provider and backend. Handles outbound (stop event → notification) and inbound (reply → command injection) flows.
+- **ReplyTokenStore** (`src/storage/reply-token-store.js`): Maps `(channelId, replyKey)` → session token for reply-to routing.
+
 ## Injection Modes
+
+Managed by `ClaudeCodeBackend`, which wraps the injector:
 
 **nvim RPC** (preferred when in nvim terminal):
 - Injects via Neovim's RPC socket
@@ -92,51 +112,60 @@ Requires tunnel (Cloudflare Tunnel, ngrok) exposing port 4731.
 - Works with remote/persistent sessions
 - Uses pane ID for stable targeting
 
-**PTY Mode** (legacy):
-- Direct injection via pseudo-terminal
-- No tmux required
-
 ## Project Structure
 
 ```
-├── claude-hook-notify.js      # Hook script (called by Claude)
-├── start-telegram-webhook.js  # Telegram webhook + machine agent
+├── start-server.js               # Main entry point (wires all components)
 │
 ├── src/
-│   ├── worker-client/         # Cloudflare Worker integration
-│   │   └── machine-agent.js   # WebSocket client for Worker
+│   ├── providers/                # Chat platform adapters
+│   │   ├── chat-provider.js      # Abstract ChatProvider interface
+│   │   └── telegram-provider.js  # Telegram implementation
 │   │
-│   ├── channels/              # Notification handlers
-│   │   └── telegram/          # Telegram bot integration
-│   │       └── webhook.js     # Webhook handler + Worker routing
+│   ├── backends/                 # Agent interaction adapters
+│   │   ├── agent-backend.js      # Abstract AgentBackend interface
+│   │   └── claude-code-backend.js # nvim/tmux injection wrapper
 │   │
-│   ├── relay/                 # Command injection
-│   │   └── injector-registry.js  # nvim/tmux injection
+│   ├── core/                     # Core logic
+│   │   ├── command-router.js     # Orchestrator (provider ↔ backend)
+│   │   └── logger.js             # Pino-based logger
 │   │
-│   ├── registry/              # Session management
-│   │   └── session-registry.js
+│   ├── storage/                  # Data persistence
+│   │   └── reply-token-store.js  # SQLite (channelId,replyKey)→token
 │   │
-│   ├── routes/                # HTTP endpoints
-│   │   └── events.js          # Claude hook events
+│   ├── registry/                 # Session management
+│   │   └── session-registry.js   # Active session tracking
 │   │
-│   ├── storage/               # Data persistence
-│   │   └── message-token-store.js  # SQLite token storage
+│   ├── routes/                   # HTTP endpoints
+│   │   └── events.js             # Claude hook events
 │   │
-│   └── core/                  # Core utilities
-│       └── logger.js
+│   ├── worker-client/            # Cloudflare Worker integration
+│   │   └── machine-agent.js      # WebSocket client for Worker
+│   │
+│   └── channels/telegram/        # Legacy (kept for fallback)
+│       ├── webhook.js            # Old monolithic webhook handler
+│       └── injector.js           # Raw tmux/nvim injection
 │
-└── .claude/                   # Claude Code integration
-    ├── commands/              # Slash commands
-    └── skills/                # Detailed guides
+├── test/                         # Vitest test suite
+│   ├── providers/                # ChatProvider + Telegram tests
+│   ├── backends/                 # ClaudeCodeBackend tests
+│   ├── core/                     # CommandRouter tests
+│   └── storage/                  # ReplyTokenStore tests
+│
+└── .claude/                      # Claude Code integration
+    ├── commands/                 # Slash commands
+    └── skills/                   # Detailed guides
 ```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `start-telegram-webhook.js` | Main entry point, initializes machine agent |
+| `start-server.js` | Main entry point, wires ChatProvider + AgentBackend + CommandRouter |
+| `src/providers/telegram-provider.js` | Telegram notifications, webhooks, draft streaming |
+| `src/core/command-router.js` | Orchestrates notification → reply → injection flow |
+| `src/backends/claude-code-backend.js` | nvim-first with tmux fallback injection |
 | `src/worker-client/machine-agent.js` | WebSocket client for Worker routing |
-| `src/channels/telegram/webhook.js` | Telegram webhook handling, Worker integration |
 | `src/routes/events.js` | HTTP endpoints for Claude hooks |
 
 ## Environment Variables
@@ -162,8 +191,8 @@ WEBHOOK_DOMAIN=ccr.yourdomain.com
 
 - Base64url tokens (22 characters)
 - Map notification message → Claude session
-- Stored in SQLite (`src/data/message-tokens.db`)
-- Expire after 24 hours
+- Stored in SQLite via `ReplyTokenStore` (`src/storage/reply-token-store.js`)
+- Expire after 24 hours (TTL checked at lookup time)
 - Enable reply-to-command functionality
 
 ## Development

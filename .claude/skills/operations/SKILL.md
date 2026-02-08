@@ -19,11 +19,11 @@ description: Use for CCR operations tasks - checking logs, restarting services, 
 
 ```bash
 # Check if running
-pgrep -af "node.*telegram-webhook"
+pgrep -af "node.*start-server"
 
 # Health endpoint
 curl -s http://localhost:4731/health
-# Expected: {"status":"ok"}
+# Expected: {"ok":true,"provider":"telegram","backend":"claude-code"}
 
 # Check sessions
 curl -s http://localhost:4731/sessions | jq '.sessions[] | {label, session_id}'
@@ -62,7 +62,7 @@ op run --env-file=.env.1password -- npm run webhooks:log
 devenv shell -- op run --env-file=.env.1password -- npm run webhooks:log >> ~/.local/state/claude-code-remote/daemon.log 2>&1 &
 
 # Stop
-pkill -f "node.*telegram-webhook"
+pkill -f "node.*start-server"
 ```
 
 ### Worker (Cloudflare)
@@ -206,7 +206,7 @@ op item edit ccr-secrets --vault=Automation \
 
 ```bash
 # Restart webhook server (picks up new secrets from 1Password)
-pkill -f "node.*telegram-webhook"
+pkill -f "node.*start-server"
 cd ~/projects/claude-code-remote
 devenv shell
 op run --env-file=.env.1password -- npm run webhooks:log

@@ -21,12 +21,19 @@ op run --env-file=.env.1password -- npm run webhooks:log
 
 ## How It Works
 
-1. Claude completes a task → Stop hook fires
-2. Notification sent to Telegram
+1. Claude completes a task → Stop hook fires (or Notification hook on AskUserQuestion)
+2. Notification sent to Telegram via ChatProvider
 3. You reply with a command
-4. Command injected into Claude session
+4. CommandRouter injects command into Claude session via AgentBackend
 
 For multi-machine setups, a Cloudflare Worker routes replies to the correct machine.
+
+## Development
+
+```bash
+npm test             # Run vitest test suite (36 tests)
+npm run test:watch   # Watch mode
+```
 
 ## Documentation
 
@@ -37,7 +44,7 @@ For multi-machine setups, a Cloudflare Worker routes replies to the correct mach
 | [machine-setup](.claude/skills/machine-setup/SKILL.md) | Adding a new machine to the CCR network |
 | [operations](.claude/skills/operations/SKILL.md) | Logs, restarts, health checks, secret rotation |
 | [security](.claude/skills/security/SKILL.md) | Secret management architecture, token flow |
-| [hooks](.claude/skills/hooks/SKILL.md) | Claude Code hooks (SessionStart, Stop) |
+| [hooks](.claude/skills/hooks/SKILL.md) | Claude Code hooks (SessionStart, Stop, Notification) |
 | [troubleshooting](.claude/skills/troubleshooting/SKILL.md) | Debugging common issues |
 
 ## Commands
