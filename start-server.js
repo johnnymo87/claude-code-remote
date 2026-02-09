@@ -25,6 +25,20 @@ const MachineAgent = require('./src/worker-client/machine-agent');
 const envPath = path.join(__dirname, '.env');
 if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
 
+// Ensure nix-profile binaries (nvim, tmux) are in PATH for systemd environments
+const nixProfileBin = path.join(process.env.HOME || '/home/dev', '.nix-profile/bin');
+if (fs.existsSync(nixProfileBin)) {
+  process.env.PATH = `${nixProfileBin}:${process.env.PATH}`;
+}
+
+// Ensure tmux can find its socket in systemd environments (XDG_RUNTIME_DIR based)
+if (!process.env.TMUX_TMPDIR) {
+  const xdgRuntime = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`;
+  if (fs.existsSync(xdgRuntime)) {
+    process.env.TMUX_TMPDIR = xdgRuntime;
+  }
+}
+
 const logger = new Logger('CCR-Server');
 
 // ── Validate env ────────────────────────────────────────────

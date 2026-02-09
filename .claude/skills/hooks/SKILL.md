@@ -1,19 +1,19 @@
 ---
 name: hooks
-description: Use when debugging Claude Code hooks, understanding the SessionStart/Stop/Notification flow, or setting up hooks on a new machine
+description: Use when debugging Claude Code hooks, understanding the SessionStart/Stop flow, or setting up hooks on a new machine
 ---
 
 # Claude Code Hooks
 
 ## Overview
 
-Claude Code hooks are shell scripts that run at specific lifecycle events. CCR uses three hooks:
+Claude Code hooks are shell scripts that run at specific lifecycle events. CCR uses two hooks:
 
 | Hook | Event | Purpose |
 |------|-------|---------|
 | `SessionStart` | Session starts, resumes, or compacts | Register session with daemon, create runtime files |
 | `Stop` | Claude stops (task complete, needs input) | Send Telegram notification if opted in |
-| `Notification` | Claude asks a question (AskUserQuestion) | Alert user that Claude needs attention |
+
 
 ## How It Works
 
@@ -73,20 +73,6 @@ Claude Code hooks are shell scripts that run at specific lifecycle events. CCR u
 3. Extracts last assistant message from transcript
 4. Sends notification via POST to `localhost:4731/stop`
 
-### on-notification.sh
-
-**Triggered:** When Claude fires a Notification event (e.g., AskUserQuestion)
-
-**Input:** JSON on stdin with `session_id`, `notification`
-
-**Actions:**
-1. Extracts notification content and session ID from input
-2. Falls back to ppid-map for session resolution
-3. Checks if session opted into notifications (`notify_label` file)
-4. Sends notification via POST to `localhost:4731/stop` with `event: "Notification"`
-
-This fixes the "silence gap" where Claude asks a question via AskUserQuestion but the user has no way of knowing without checking.
-
 ## Deployment Methods
 
 ### NixOS/home-manager (Recommended for devbox)
@@ -97,8 +83,7 @@ Hooks are managed in the workstation repo:
 workstation/
 ├── assets/claude/hooks/
 │   ├── on-session-start.sh   # Raw scripts
-│   ├── on-stop.sh
-│   └── on-notification.sh
+│   └── on-stop.sh
 └── users/dev/claude-hooks.nix  # Nix wrapper module
 ```
 
@@ -127,9 +112,6 @@ home-manager switch --flake .#dev
     }],
     "Stop": [{
       "hooks": [{"type": "command", "command": "~/.claude/hooks/on-stop.sh"}]
-    }],
-    "Notification": [{
-      "hooks": [{"type": "command", "command": "~/.claude/hooks/on-notification.sh"}]
     }]
   }
 }
@@ -173,6 +155,16 @@ curl -s http://localhost:4731/sessions | jq '.sessions[] | {session_id, label}'
 1. Check `~/.claude/settings.json` has hooks configured
 2. Restart Claude session (hooks load on start)
 3. Check Claude Code version supports hooks
+### Check on-stop.sh debug probe
+
+The Stop hook logs checkpoints to `~/.claude/runtime/hook-debug/stop.*.log`:
+
+```bash
+ls -lt ~/.claude/runtime/hook-debug/ | head -5
+cat "$(ls -t ~/.claude/runtime/hook-debug/stop.*.log | head -1)"
+```
+
+Each log traces: `session_id` → `label` → `transcript` → `message` → `payload` → `curl_done`. Missing checkpoints indicate where the script exited.
 
 ### Notification not sending?
 

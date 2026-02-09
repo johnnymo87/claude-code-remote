@@ -39,14 +39,29 @@ class CommandRouter {
       { text: '🛑 Exit', action: 'exit' },
     ];
 
+    const notification = {
+      event,
+      sessionId: session.session_id,
+      label: displayLabel,
+      summary,
+      cwd: session.cwd,
+      token,
+      buttons,
+    };
+
     // Send via Worker if available, for reply routing
     if (this.machineAgent && process.env.CCR_WORKER_URL) {
       try {
+        // Format via provider so Worker gets the full styled message + buttons
+        const formatted = this.provider.formatNotification
+          ? this.provider.formatNotification(notification)
+          : { text: summary, replyMarkup: null };
+
         const result = await this.machineAgent.sendNotification(
           session.session_id,
           chatId,
-          summary,
-          null, // Worker formats its own keyboard
+          formatted.text,
+          formatted.replyMarkup,
         );
         if (result.ok) {
           this.logger.info(`Notification sent via Worker for session ${session.session_id}`);
@@ -59,15 +74,7 @@ class CommandRouter {
     }
 
     // Direct send via provider
-    const { messageId } = await this.provider.sendNotification({
-      event,
-      sessionId: session.session_id,
-      label: displayLabel,
-      summary,
-      cwd: session.cwd,
-      token,
-      buttons,
-    });
+    const { messageId } = await this.provider.sendNotification(notification);
 
     // Store reply-to mapping for reply routing
     if (this.tokenStore && messageId) {

@@ -21,10 +21,10 @@ op run --env-file=.env.1password -- npm run webhooks:log
 
 ## How It Works
 
-1. Claude completes a task → Stop hook fires (or Notification hook on AskUserQuestion)
-2. Notification sent to Telegram via ChatProvider
-3. You reply with a command
-4. CommandRouter injects command into Claude session via AgentBackend
+1. Claude completes a task → Stop hook fires
+2. Notification with full assistant message sent to Telegram via ChatProvider
+3. You reply with a command (swipe-reply or inline button)
+4. CommandRouter injects command into Claude session via AgentBackend (tmux send-keys)
 
 For multi-machine setups, a Cloudflare Worker routes replies to the correct machine.
 

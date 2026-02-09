@@ -34,14 +34,17 @@ class TelegramProvider extends ChatProvider {
     };
   }
 
-  async sendNotification(notification) {
+  /**
+   * Format a notification into text + replyMarkup without sending.
+   * Used by CommandRouter to pass formatted content to the Worker.
+   */
+  formatNotification(notification) {
     const { event, label, summary, cwd, token, buttons } = notification;
-    const chatId = this.chatId;
 
     const emoji = event === 'SubagentStop' ? '🔧' : event === 'Notification' ? '❓' : '🤖';
     const cwdShort = cwd ? cwd.split('/').slice(-2).join('/') : 'unknown';
 
-    const message = [
+    const text = [
       `${emoji} *${event}*: ${this._escapeMarkdown(label)}`,
       '',
       summary,
@@ -51,16 +54,13 @@ class TelegramProvider extends ChatProvider {
       `↩️ _Swipe-reply to respond_`,
     ].join('\n');
 
-    // Build inline keyboard from buttons
     let replyMarkup;
     if (buttons && buttons.length > 0) {
       const rows = [];
-      // First row: up to 3 buttons
       rows.push(buttons.slice(0, 3).map(b => ({
         text: b.text,
         callback_data: `cmd:${token}:${b.action}`,
       })));
-      // Second row: remaining buttons
       if (buttons.length > 3) {
         rows.push(buttons.slice(3).map(b => ({
           text: b.text,
@@ -70,9 +70,16 @@ class TelegramProvider extends ChatProvider {
       replyMarkup = { inline_keyboard: rows };
     }
 
+    return { text, replyMarkup };
+  }
+
+  async sendNotification(notification) {
+    const chatId = this.chatId;
+    const { text, replyMarkup } = this.formatNotification(notification);
+
     const response = await this._apiCall('sendMessage', {
       chat_id: chatId,
-      text: message,
+      text,
       parse_mode: 'Markdown',
       ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     });

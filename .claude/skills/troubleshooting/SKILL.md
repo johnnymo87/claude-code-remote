@@ -173,6 +173,26 @@ git pull origin master  # Get the fix
 op run --env-file=.env.1password -- npm run webhooks:log
 ```
 
+## Stop Hook Debug Probe
+
+The `on-stop.sh` script has built-in checkpoint logging:
+
+```bash
+# List recent hook executions
+ls -lt ~/.claude/runtime/hook-debug/ | head -5
+
+# Read latest probe log
+cat "$(ls -t ~/.claude/runtime/hook-debug/stop.*.log | head -1)"
+```
+
+Each log traces: `session_id` → `label` → `transcript` → `message` → `payload` → `curl_done`. Missing checkpoints indicate where the script exited.
+
+### Systemd environment issues
+
+When CCR runs as a systemd service, `start-server.js` auto-fixes two common issues:
+- **Missing nix-profile binaries**: Prepends `~/.nix-profile/bin` to PATH (for nvim, tmux)
+- **tmux socket not found**: Sets `TMUX_TMPDIR` from `XDG_RUNTIME_DIR` (systemd uses `/run/user/<uid>` not `/tmp`)
+
 ## Debug Mode
 
 Enable verbose logging:

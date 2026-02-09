@@ -66,12 +66,13 @@ Requires tunnel (Cloudflare Tunnel, ngrok) exposing port 4731.
 
 ### With Worker Routing (Multi-Machine)
 
-1. **Claude completes task** → Stop hook fires
-2. **CCR sends notification** → Via Worker's `/notifications/send` endpoint
-3. **Worker sends to Telegram** → Stores message_id → session mapping
-4. **You reply** → Telegram webhook hits Worker
-5. **Worker routes command** → Pushes to correct machine via WebSocket
-6. **Machine agent receives** → Injects into local Claude session
+1. **Claude completes task** → Stop hook fires → `on-stop.sh` POSTs to daemon
+2. **CCR formats notification** → `TelegramProvider.formatNotification()` builds styled text + inline keyboard
+3. **Sent via Worker** → MachineAgent sends formatted message to Worker's `/notifications/send`
+4. **Worker sends to Telegram** → Stores message_id → session mapping
+5. **You reply** → Telegram webhook hits Worker
+6. **Worker routes command** → Pushes to correct machine via WebSocket
+7. **Machine agent receives** → Injects into Claude session via tmux send-keys
 
 ### Direct Mode (Single Machine)
 
