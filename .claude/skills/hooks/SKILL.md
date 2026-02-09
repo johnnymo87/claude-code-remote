@@ -117,16 +117,15 @@ home-manager switch --flake .#dev
 }
 ```
 
-## Opting Into Notifications
+## Notification Opt-In
 
-Hooks only send notifications if the session has opted in. To opt in:
+Sessions auto-register with `notify: true` on startup. The `on-session-start.sh` hook derives a label from `$PWD` (the project directory name) and registers the session with both the local daemon and the Cloudflare Worker.
 
+To manually override the label:
 ```bash
 # In Claude session
-/notify-telegram my-project-label
+/notify-telegram my-custom-label
 ```
-
-This creates `~/.claude/runtime/sessions/<session_id>/notify_label` containing the label.
 
 ## Debugging
 
@@ -155,7 +154,17 @@ curl -s http://localhost:4731/sessions | jq '.sessions[] | {session_id, label}'
 1. Check `~/.claude/settings.json` has hooks configured
 2. Restart Claude session (hooks load on start)
 3. Check Claude Code version supports hooks
-### Check on-stop.sh debug probe
+### Check debug probes
+
+Both hooks log checkpoints to `~/.claude/runtime/hook-debug/`:
+
+```bash
+ls -lt ~/.claude/runtime/hook-debug/ | head -5
+```
+
+**Session-start probe** (`session-start.*.log`): Logs session_id, ppid, notify flag, label, payload, and curl result. Confirms the session registered with the daemon.
+
+**Stop probe** (`stop.*.log`):
 
 The Stop hook logs checkpoints to `~/.claude/runtime/hook-debug/stop.*.log`:
 

@@ -44,7 +44,7 @@ npm run test:watch   # Watch mode
 | [machine-setup](.claude/skills/machine-setup/SKILL.md) | Adding a new machine to the CCR network |
 | [operations](.claude/skills/operations/SKILL.md) | Logs, restarts, health checks, secret rotation |
 | [security](.claude/skills/security/SKILL.md) | Secret management architecture, token flow |
-| [hooks](.claude/skills/hooks/SKILL.md) | Claude Code hooks (SessionStart, Stop, Notification) |
+| [hooks](.claude/skills/hooks/SKILL.md) | Claude Code hooks (SessionStart, Stop) |
 | [troubleshooting](.claude/skills/troubleshooting/SKILL.md) | Debugging common issues |
 
 ## Commands

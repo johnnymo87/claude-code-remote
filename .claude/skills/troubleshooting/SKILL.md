@@ -40,16 +40,24 @@ curl https://ccr-router.your-account.workers.dev/sessions
 
 ### Notifications sent but no reply routing
 
+Sessions auto-register with the Worker on startup (via `on-session-start.sh`). If replies fail with "Could not find session for this message":
+
 1. **Check session registered with Worker:**
    ```bash
-   # After enabling notifications, check Worker sessions
    curl https://ccr-router.your-account.workers.dev/sessions | jq
    ```
+   If the session is missing, the `/session-start` hook may have fired before the daemon was running. Restart the CC session.
 
 2. **Verify webhook points to Worker:**
    ```bash
    op run --env-file=.env.1password -- sh -c 'curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo" | jq ".result.url"'
    # Should show Worker URL, not direct tunnel URL
+   ```
+
+3. **Check session-start debug log:**
+   ```bash
+   cat "$(ls -t ~/.claude/runtime/hook-debug/session-start.*.log | head -1)"
+   # curl_done should show {"ok":true,"session_id":"..."}
    ```
 
 ### Worker returning errors
@@ -189,9 +197,10 @@ Each log traces: `session_id` → `label` → `transcript` → `message` → `pa
 
 ### Systemd environment issues
 
-When CCR runs as a systemd service, `start-server.js` auto-fixes two common issues:
+When CCR runs as a systemd service, `start-server.js` auto-fixes common issues:
 - **Missing nix-profile binaries**: Prepends `~/.nix-profile/bin` to PATH (for nvim, tmux)
 - **tmux socket not found**: Sets `TMUX_TMPDIR` from `XDG_RUNTIME_DIR` (systemd uses `/run/user/<uid>` not `/tmp`)
+- **Session liveness checks**: Uses `/proc` on Linux instead of `ps` (not in systemd PATH). Without this fix, `cleanupDeadSessions()` would mark all notify-enabled sessions as dead every 60 seconds.
 
 ## Debug Mode
 
@@ -214,12 +223,12 @@ curl http://localhost:4731/sessions | jq
 
 ### Clear stale sessions
 
-The sessions database is at `src/data/sessions.db`. To reset:
+The sessions file is at `src/data/claude-sessions.json`. To reset:
 ```bash
-rm src/data/sessions.db
+rm src/data/claude-sessions.json
 ```
 
-Then restart services.
+Then restart the daemon.
 
 ## NixOS Systemd Service Issues
 
