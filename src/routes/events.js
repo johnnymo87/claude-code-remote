@@ -60,6 +60,14 @@ function createEventRoutes(options) {
             logger.info?.(`Session started: ${session_id}`) ||
                 logger.log?.(`Session started: ${session_id}`);
 
+            // Register with Worker if notify is enabled
+            if (notify && onNotifyEnabled) {
+                onNotifyEnabled({ session }).catch((err) => {
+                    logger.error?.(`onNotifyEnabled callback failed: ${err.message}`) ||
+                        logger.log?.(`onNotifyEnabled callback failed: ${err.message}`);
+                });
+            }
+
             res.json({ ok: true, session_id: session.session_id });
         } catch (error) {
             logger.error?.(`Error in /events/session-start: ${error.message}`) ||
