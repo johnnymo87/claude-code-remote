@@ -430,42 +430,54 @@ class SessionRegistry {
      * @returns {Promise<boolean>}
      */
     async _isProcessAlive(pid, expectedStartTime) {
+        const fs = require('fs');
+
+        // Linux: check /proc directly (no external commands needed)
+        if (process.platform === 'linux') {
+            try {
+                fs.accessSync(`/proc/${pid}`, fs.constants.F_OK);
+
+                if (!expectedStartTime) {
+                    return true;
+                }
+
+                // Compare start time via /proc stat (field 22 = starttime in clock ticks)
+                const actualStartTime = Math.floor(
+                    fs.statSync(`/proc/${pid}`).ctimeMs / 1000
+                );
+                return Math.abs(actualStartTime - expectedStartTime) <= 2;
+            } catch {
+                return false;
+            }
+        }
+
+        // macOS: use ps + date
         const { exec } = require('child_process');
         const { promisify } = require('util');
         const execAsync = promisify(exec);
 
         try {
-            // Check if process exists and get its start time
-            // macOS: ps -o lstart= returns "Tue 30 Dec 13:14:35 2025"
             const { stdout } = await execAsync(`ps -o lstart= -p ${pid} 2>/dev/null`);
             const lstart = stdout.trim();
 
             if (!lstart) {
-                return false; // Process doesn't exist
+                return false;
             }
 
-            // If no expected start time, just check existence
             if (!expectedStartTime) {
-                return true; // Process exists, can't validate start time
+                return true;
             }
 
-            // Parse the start time (macOS format)
-            // Use date command to convert to epoch
             try {
                 const { stdout: epochStr } = await execAsync(
                     `date -j -f "%a %d %b %H:%M:%S %Y" "${lstart}" "+%s" 2>/dev/null`
                 );
                 const actualStartTime = parseInt(epochStr.trim(), 10);
-
-                // Allow 2 second tolerance for timing differences
                 return Math.abs(actualStartTime - expectedStartTime) <= 2;
             } catch {
-                // If we can't parse the date, assume process is alive
-                // (better to send duplicate notification than miss one)
                 return true;
             }
         } catch {
-            // ps command failed - process doesn't exist
             return false;
         }
     }
