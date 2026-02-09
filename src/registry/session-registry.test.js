@@ -257,4 +257,43 @@ describe('SessionRegistry', () => {
             }
         });
     });
+
+    describe('transport building', () => {
+        test('sets instance_name from tty for nvim sessions', async () => {
+            const session = await registry.upsertSession({
+                session_id: 'nvim-sess-1',
+                cwd: '/tmp',
+                nvim_socket: '/tmp/nvim.sock',
+                tty: '/dev/pts/12',
+                tmux_session: '0',
+                tmux_pane_id: '%5',
+            });
+            expect(session.transport.kind).toBe('nvim');
+            expect(session.transport.instance_name).toBe('/dev/pts/12');
+            expect(session.transport.nvim_socket).toBe('/tmp/nvim.sock');
+            expect(session.transport.tmux_pane_id).toBe('%5');
+        });
+
+        test('falls back to explicit instance_name when no tty', async () => {
+            const session = await registry.upsertSession({
+                session_id: 'nvim-sess-2',
+                cwd: '/tmp',
+                nvim_socket: '/tmp/nvim.sock',
+                instance_name: 'manual-name',
+            });
+            expect(session.transport.kind).toBe('nvim');
+            expect(session.transport.instance_name).toBe('manual-name');
+        });
+
+        test('does not set instance_name for tmux-only sessions', async () => {
+            const session = await registry.upsertSession({
+                session_id: 'tmux-sess-1',
+                cwd: '/tmp',
+                tmux_session: '0',
+                tmux_pane_id: '%7',
+            });
+            expect(session.transport.kind).toBe('tmux');
+            expect(session.transport.instance_name).toBeUndefined();
+        });
+    });
 });

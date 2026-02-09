@@ -151,7 +151,7 @@ class SessionRegistry {
                 kind: 'nvim',
                 nvim_socket: session.nvim_socket,
                 buffer: session.buffer ?? existing?.transport?.buffer,
-                instance_name: session.instance_name ?? existing?.transport?.instance_name,
+                instance_name: session.tty || session.instance_name || existing?.transport?.instance_name,
                 // Store tmux as fallback - prefer pane_id (stable) over session:window.pane (unstable)
                 tmux_pane_id: session.tmux_pane_id || existing?.transport?.tmux_pane_id,
                 tmux_session: session.tmux_pane || session.tmux_session || existing?.transport?.tmux_session,
