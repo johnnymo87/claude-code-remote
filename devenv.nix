@@ -40,6 +40,6 @@
     fi
     echo ""
     echo "Start webhook server:"
-    echo "  op run --env-file=.env.1password -- npm run webhooks:log"
+    echo "  op run --account my.1password.com --env-file=.env.1password -- npm run webhooks:log"
   '';
 }
