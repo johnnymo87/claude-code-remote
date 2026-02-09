@@ -104,9 +104,12 @@ ChatProvider (messaging platform)     AgentBackend (agent interaction)
 Managed by `ClaudeCodeBackend`, which wraps the injector:
 
 **nvim RPC** (preferred when in nvim terminal):
-- Injects via Neovim's RPC socket
-- Cleanest integration for nvim users
-- Falls back to tmux if socket unavailable
+- Auto-registers terminal buffers by PTY device path on TermOpen (ccremote.lua)
+- Session-start hook sends TTY path; daemon sets instance_name to match
+- Injects via chansend(job_id) to target the correct terminal buffer without focusing
+- PTY keying survives subshells, wrappers, and environment tools (nix shell, devbox shell)
+- Falls back to tmux if nvim socket unavailable
+- Manual `:CCRegister <name>` still works as override
 
 **tmux Mode**:
 - Injects via tmux send-keys

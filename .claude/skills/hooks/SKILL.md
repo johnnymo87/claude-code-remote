@@ -60,6 +60,7 @@ Claude Code hooks are shell scripts that run at specific lifecycle events. CCR u
 2. Stores transcript path, PPID, tmux info
 3. Creates lookup maps (ppid-map, pane-map) for command routing
 4. Notifies webhook daemon via POST to `localhost:4731/session-start`
+5. Detects TTY device path (when inside nvim terminal) for RPC instance matching
 
 ### on-stop.sh
 
