@@ -24,14 +24,14 @@ op run --env-file=.env.1password -- npm run webhooks:log
 1. Claude completes a task → Stop hook fires
 2. Notification with full assistant message sent to Telegram via ChatProvider
 3. You reply with a command (swipe-reply or inline button)
-4. CommandRouter injects command into Claude session via AgentBackend (tmux send-keys)
+4. CommandRouter injects command into Claude session via AgentBackend (nvim RPC or tmux fallback)
 
 For multi-machine setups, a Cloudflare Worker routes replies to the correct machine.
 
 ## Development
 
 ```bash
-npm test             # Run vitest test suite (36 tests)
+npm test             # Run vitest test suite (39 tests)
 npm run test:watch   # Watch mode
 ```
 
