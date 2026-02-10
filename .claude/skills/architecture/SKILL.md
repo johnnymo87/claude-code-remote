@@ -116,6 +116,20 @@ Managed by `ClaudeCodeBackend`, which wraps the injector:
 - Works with remote/persistent sessions
 - Uses pane ID for stable targeting
 
+## OpenCode Plugin Integration
+
+For [OpenCode](https://opencode.ai) sessions, the [opencode-pigeon](https://github.com/johnnymo87/opencode-pigeon) plugin replaces shell hooks as the session lifecycle manager. The plugin runs inside OpenCode's process and communicates with this daemon via HTTP.
+
+**Plugin → Daemon flow**:
+- `POST /session-start`: Plugin registers session with env info (TTY, nvim socket, tmux pane)
+- `POST /stop`: Plugin sends markdown-stripped summary when session goes idle
+
+**Key difference from shell hooks**: The plugin detects TTY via `/proc` readlink (not shell `readlink` command), captures assistant content in real-time (not from conversation file), and handles session lifecycle events natively (no hook scripts).
+
+**TTY → instance_name mapping**: Plugin sends `tty: "/dev/pts/N"` → daemon stores as `transport.instance_name` → used by NvimInjector to target the correct ccremote terminal buffer.
+
+The plugin source lives in `~/projects/opencode-pigeon/`. See its `.claude/skills/architecture/SKILL.md` for plugin-side details.
+
 ## Project Structure
 
 ```
